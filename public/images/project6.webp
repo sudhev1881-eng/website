@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="750" viewBox="0 0 1200 750">
+  <rect width="1200" height="750" fill="#0a0a0a"/>
+  <defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#16213e"/><stop offset="100%" style="stop-color:#e94560"/></linearGradient></defs>
+  <rect width="1200" height="750" fill="url(#g)" opacity="0.35"/>
+  <text x="600" y="365" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="28" opacity="0.5">Car Showroom System</text>
+  <text x="600" y="405" text-anchor="middle" fill="white" font-family="system-ui,sans-serif" font-size="14" opacity="0.25">Project Preview</text>
+</svg>

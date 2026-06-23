@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" shape-rendering="crispEdges">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5BB5F0"/>
+      <stop offset="55%" stop-color="#7EC8F5"/>
+      <stop offset="100%" stop-color="#A8D8F5"/>
+    </linearGradient>
+  </defs>
+  <!-- Sky -->
+  <rect width="1920" height="680" fill="url(#sky)"/>
+  <!-- Sun rays -->
+  <polygon points="1600,0 1920,0 1920,420 1500,180" fill="rgba(255,255,220,0.25)"/>
+  <!-- Clouds -->
+  <g fill="#FFFFFF" opacity="0.95">
+    <rect x="180" y="120" width="80" height="24"/><rect x="220" y="96" width="96" height="24"/><rect x="260" y="120" width="80" height="24"/>
+    <rect x="520" y="80" width="64" height="20"/><rect x="552" y="60" width="88" height="20"/><rect x="584" y="80" width="72" height="20"/>
+    <rect x="980" y="140" width="72" height="22"/><rect x="1020" y="118" width="104" height="22"/><rect x="1060" y="140" width="80" height="22"/>
+    <rect x="1380" y="90" width="88" height="24"/><rect x="1420" y="66" width="112" height="24"/><rect x="1460" y="90" width="96" height="24"/>
+  </g>
+  <!-- Distant city -->
+  <g fill="#6B8CAE">
+    <rect x="0" y="520" width="60" height="160"/><rect x="70" y="480" width="50" height="200"/><rect x="130" y="500" width="70" height="180"/>
+    <rect x="220" y="460" width="55" height="220"/><rect x="290" y="490" width="80" height="190"/><rect x="390" y="470" width="45" height="210"/>
+    <rect x="450" y="440" width="65" height="240"/><rect x="530" y="480" width="90" height="200"/><rect x="640" y="450" width="55" height="230"/>
+    <rect x="710" y="500" width="75" height="180"/><rect x="800" y="430" width="60" height="250"/><rect x="880" y="470" width="85" height="210"/>
+    <rect x="980" y="455" width="50" height="225"/><rect x="1050" y="490" width="95" height="190"/><rect x="1160" y="465" width="60" height="215"/>
+    <rect x="1240" y="440" width="70" height="240"/><rect x="1330" y="480" width="80" height="200"/><rect x="1430" y="450" width="55" height="230"/>
+    <rect x="1500" y="470" width="90" height="210"/><rect x="1610" y="430" width="65" height="250"/><rect x="1700" y="490" width="75" height="190"/>
+    <rect x="1800" y="460" width="120" height="220"/>
+  </g>
+  <!-- Trees back -->
+  <g fill="#2D6B3A">
+    <rect x="320" y="560" width="24" height="80"/><polygon points="332,520 300,580 364,580"/>
+    <rect x="720" y="570" width="20" height="70"/><polygon points="730,540 704,590 756,590"/>
+    <rect x="1120" y="555" width="28" height="85"/><polygon points="1134,510 1098,575 1170,575"/>
+    <rect x="1520" y="565" width="22" height="75"/><polygon points="1531,530 1504,585 1558,585"/>
+  </g>
+  <!-- Grass hill -->
+  <rect x="0" y="680" width="1920" height="400" fill="#4A9E4F"/>
+  <rect x="0" y="720" width="1920" height="360" fill="#3D8B42"/>
+  <rect x="0" y="760" width="1920" height="320" fill="#358038"/>
+  <!-- Grass texture pixels -->
+  <g fill="#2E7334" opacity="0.6">
+    <rect x="40" y="800" width="8" height="8"/><rect x="120" y="820" width="8" height="8"/><rect x="200" y="790" width="8" height="8"/>
+    <rect x="340" y="830" width="8" height="8"/><rect x="480" y="810" width="8" height="8"/><rect x="620" y="840" width="8" height="8"/>
+    <rect x="760" y="795" width="8" height="8"/><rect x="900" y="825" width="8" height="8"/><rect x="1040" y="805" width="8" height="8"/>
+    <rect x="1180" y="835" width="8" height="8"/><rect x="1320" y="800" width="8" height="8"/><rect x="1460" y="820" width="8" height="8"/>
+    <rect x="1600" y="845" width="8" height="8"/><rect x="1740" y="810" width="8" height="8"/><rect x="1860" y="830" width="8" height="8"/>
+  </g>
+  <!-- Park bench -->
+  <g transform="translate(680,820)">
+    <rect x="0" y="40" width="120" height="8" fill="#5C4033"/>
+    <rect x="8" y="48" width="104" height="6" fill="#4A3328"/>
+    <rect x="0" y="54" width="8" height="36" fill="#3D2B1F"/>
+    <rect x="112" y="54" width="8" height="36" fill="#3D2B1F"/>
+  </g>
+  <!-- Trees front -->
+  <g fill="#256B32">
+    <rect x="180" y="700" width="32" height="120"/><polygon points="196,640 150,720 242,720"/>
+    <rect x="1680" y="710" width="28" height="110"/><polygon points="1694,660 1654,725 1734,725"/>
+  </g>
+  <!-- Yellow flower -->
+  <circle cx="920" cy="920" r="8" fill="#F5D042"/>
+  <rect x="918" y="928" width="4" height="16" fill="#358038"/>
+  <!-- Foreground grass shadow -->
+  <rect x="0" y="1000" width="1920" height="80" fill="#2A6530"/>
+</svg>
