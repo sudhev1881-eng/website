@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ProgressBar } from "@/components/charts/SimpleBarChart";
 import { toast } from "@/components/ui/toast";
-import type { PublicProfile } from "@/data/mock-profile";
+import type { PublicProfile } from "@/lib/api";
 import { fadeInVariants, staggerContainer } from "@/lib/motion";
 
 interface PublicProfileViewProps {

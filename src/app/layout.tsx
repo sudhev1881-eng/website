@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
+import { AuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "@/components/ui/toast";
 import { studentLink } from "@/data/studentlink";
 import "./globals.css";
@@ -31,8 +32,10 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full`}>
       <body className="min-h-full overflow-x-hidden bg-background font-sans text-foreground antialiased">
         <ThemeProvider>
-          {children}
-          <Toaster />
+          <AuthProvider>
+            {children}
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

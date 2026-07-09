@@ -13,8 +13,10 @@ import {
   Settings,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { RequireAuth } from "@/components/layout/RequireAuth";
 import { StudentLinkLogo } from "@/components/brand/StudentLinkLogo";
-import { currentStudent } from "@/data/mock-student";
+import { StudentDataProvider } from "@/providers/student-data-provider";
+import { useStudentData } from "@/providers/student-data-provider";
 import { StudentOverview } from "./StudentOverview";
 import { StudentProfile } from "./StudentProfile";
 import { StudentResume } from "./StudentResume";
@@ -37,24 +39,21 @@ const navItems = [
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
-const modules: Record<string, React.ReactNode> = {
-  overview: <StudentOverview />,
-  profile: <StudentProfile />,
-  resume: <StudentResume />,
-  projects: <StudentProjects />,
-  skills: <StudentSkills />,
-  certificates: <StudentCertificates />,
-  analytics: <StudentAnalytics />,
-  nfc: <StudentNfc />,
-  settings: <StudentSettings />,
-};
+function StudentDashboardInner() {
+  const [activeId, setActiveId] = React.useState("overview");
+  const { data } = useStudentData();
 
-interface StudentDashboardProps {
-  initialSection?: string;
-}
-
-export function StudentDashboard({ initialSection = "overview" }: StudentDashboardProps) {
-  const [activeId, setActiveId] = React.useState(initialSection);
+  const modules: Record<string, React.ReactNode> = {
+    overview: <StudentOverview />,
+    profile: <StudentProfile />,
+    resume: <StudentResume />,
+    projects: <StudentProjects />,
+    skills: <StudentSkills />,
+    certificates: <StudentCertificates />,
+    analytics: <StudentAnalytics />,
+    nfc: <StudentNfc />,
+    settings: <StudentSettings />,
+  };
 
   return (
     <DashboardShell
@@ -62,9 +61,19 @@ export function StudentDashboard({ initialSection = "overview" }: StudentDashboa
       navItems={navItems}
       activeId={activeId}
       onNavigate={setActiveId}
-      user={{ name: currentStudent.name, role: "Student" }}
+      user={{ name: data?.profile.name ?? "Student", role: "Student" }}
     >
       {modules[activeId] ?? modules.overview}
     </DashboardShell>
+  );
+}
+
+export function StudentDashboard() {
+  return (
+    <RequireAuth role="student">
+      <StudentDataProvider>
+        <StudentDashboardInner />
+      </StudentDataProvider>
+    </RequireAuth>
   );
 }

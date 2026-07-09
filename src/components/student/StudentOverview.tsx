@@ -14,14 +14,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SimpleBarChart } from "@/components/charts/SimpleBarChart";
-import {
-  studentStats,
-  analyticsData,
-  nfcCard,
-  currentStudent,
-} from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentOverview() {
+  const { data } = useStudentData();
+  if (!data) return null;
+  const { profile: currentStudent, stats: studentStats, analytics: analyticsData, nfcCard } = data;
   return (
     <div>
       <PageHeader
@@ -86,6 +84,7 @@ export function StudentOverview() {
           </CardContent>
         </Card>
 
+        {nfcCard ? (
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>NFC Card</CardTitle>
@@ -110,6 +109,14 @@ export function StudentOverview() {
             </Button>
           </CardContent>
         </Card>
+        ) : (
+        <Card className="shadow-card">
+          <CardHeader><CardTitle>NFC Card</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">No NFC card linked yet. Contact your administrator.</p>
+          </CardContent>
+        </Card>
+        )}
       </div>
 
       <Card className="mt-6 shadow-card">

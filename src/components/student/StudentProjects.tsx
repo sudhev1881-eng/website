@@ -6,9 +6,12 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { studentProjects } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentProjects() {
+  const { data } = useStudentData();
+  if (!data) return null;
+  const studentProjects = data.projects;
   return (
     <div>
       <PageHeader

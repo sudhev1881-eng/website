@@ -12,9 +12,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
-import { currentStudent } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentSettings() {
+  const { data } = useStudentData();
+  if (!data) return null;
+  const currentStudent = data.profile;
   return (
     <div>
       <PageHeader

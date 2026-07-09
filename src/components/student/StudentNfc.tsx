@@ -2,14 +2,27 @@
 
 import { Nfc, Copy, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
-import { nfcCard, currentStudent } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentNfc() {
-  const profileUrl = `https://studentlink.app/u/${currentStudent.username}`;
+  const { data } = useStudentData();
+  if (!data) return null;
+  const { profile: currentStudent, nfcCard } = data;
+  if (!nfcCard) {
+    return (
+      <div>
+        <PageHeader title="NFC Card Management" description="No NFC card linked yet." />
+        <EmptyState icon={<Nfc className="h-6 w-6" />} title="No NFC card" description="Contact your administrator to get an NFC card programmed." />
+      </div>
+    );
+  }
+
+  const profileUrl = `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/u/${currentStudent.username}`;
 
   return (
     <div>

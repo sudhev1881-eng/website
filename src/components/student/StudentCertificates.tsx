@@ -5,9 +5,12 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { studentCertificates } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentCertificates() {
+  const { data } = useStudentData();
+  if (!data) return null;
+  const studentCertificates = data.certificates;
   return (
     <div>
       <PageHeader

@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { RequireAuth } from "@/components/layout/RequireAuth";
 import { StudentLinkLogo } from "@/components/brand/StudentLinkLogo";
 import { AdminOverview } from "./AdminOverview";
 import { AdminStudents } from "./AdminStudents";
@@ -19,6 +20,7 @@ import { AdminUniversities } from "./AdminUniversities";
 import { AdminAnalytics } from "./AdminAnalytics";
 import { AdminStorage } from "./AdminStorage";
 import { AdminSettings } from "./AdminSettings";
+import { useAuth } from "@/providers/auth-provider";
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -40,8 +42,9 @@ const modules: Record<string, React.ReactNode> = {
   settings: <AdminSettings />,
 };
 
-export function AdminDashboard() {
+function AdminDashboardInner() {
   const [activeId, setActiveId] = React.useState("dashboard");
+  const { user } = useAuth();
 
   return (
     <DashboardShell
@@ -49,9 +52,17 @@ export function AdminDashboard() {
       navItems={navItems}
       activeId={activeId}
       onNavigate={setActiveId}
-      user={{ name: "Admin User", role: "Web Admin" }}
+      user={{ name: user?.email ?? "Admin", role: "Web Admin" }}
     >
       {modules[activeId] ?? modules.dashboard}
     </DashboardShell>
+  );
+}
+
+export function AdminDashboard() {
+  return (
+    <RequireAuth role="admin">
+      <AdminDashboardInner />
+    </RequireAuth>
   );
 }

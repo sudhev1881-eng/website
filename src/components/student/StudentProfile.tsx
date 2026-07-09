@@ -6,16 +6,35 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Upload } from "@/components/ui/upload";
+import { useStudentData } from "@/providers/student-data-provider";
 import { toast } from "@/components/ui/toast";
-import { currentStudent } from "@/data/mock-student";
+import { api } from "@/lib/api";
 
 export function StudentProfile() {
+  const { data, refresh } = useStudentData();
+  if (!data) return null;
+  const currentStudent = data.profile;
+
+  const handleSave = async () => {
+    try {
+      await api.students.updateProfile({
+        name: currentStudent.name,
+        university: currentStudent.university,
+        major: currentStudent.major,
+        bio: currentStudent.bio,
+      });
+      toast.success("Profile saved successfully");
+      refresh();
+    } catch {
+      toast.error("Failed to save profile");
+    }
+  };
   return (
     <div>
       <PageHeader
         title="My Profile"
         description="Manage your public profile information."
-        actions={<Button onClick={() => toast.success("Profile saved successfully")}>Save Changes</Button>}
+        actions={<Button onClick={handleSave}>Save Changes</Button>}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">

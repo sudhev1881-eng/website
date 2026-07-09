@@ -30,32 +30,50 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design, NFC
 
 ## Quick Start (development)
 
-### 1. Frontend
+You need **three things running**: PostgreSQL, the API, and the frontend.
+
+### 1. Database
 
 ```bash
-npm install
+npm run db:up          # starts PostgreSQL via Docker
+npm run db:setup       # runs migrations + seeds demo data
+```
+
+### 2. Backend API (port 4000)
+
+```bash
+cp server/.env.example server/.env
+npm run dev:api
+```
+
+### 3. Frontend (port 3000)
+
+```bash
 cp .env.example .env.local
+npm install
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### 2. Backend API
+### Demo accounts (after `npm run db:seed`)
 
-```bash
-cd server
-npm install
-cp .env.example .env
-npm run dev
-```
+| Role    | Email                        | Password   |
+|---------|------------------------------|------------|
+| Student | alex.morgan@stanford.edu     | student123 |
+| Student | sarah.chen@mit.edu           | student123 |
+| Admin   | admin@studentlink.local      | admin123   |
 
-API runs at [http://localhost:4000](http://localhost:4000)
+### API endpoints
 
-### 3. Database (optional, via Docker)
-
-```bash
-docker compose up -d postgres
-```
+| Method | Path                  | Auth   | Description              |
+|--------|-----------------------|--------|--------------------------|
+| POST   | `/api/auth/register`  | No     | Create student account   |
+| POST   | `/api/auth/login`     | No     | Login, returns JWT       |
+| GET    | `/api/students/me`    | Student| Full dashboard data      |
+| GET    | `/api/profiles/:slug` | No     | Public recruiter profile |
+| GET    | `/api/admin/students` | Admin  | List all students        |
+| POST   | `/api/nfc/program`    | Admin  | Program NFC card         |
 
 ## NFC Card Programming
 

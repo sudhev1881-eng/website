@@ -2,14 +2,25 @@
 
 import { FileText, Download, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState } from "@/components/layout/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload } from "@/components/ui/upload";
 import { toast } from "@/components/ui/toast";
-import { studentResume } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentResume() {
+  const { data } = useStudentData();
+  if (!data?.resume) {
+    return (
+      <div>
+        <PageHeader title="Resume Manager" description="Upload and manage your resume versions." />
+        <EmptyState icon={<FileText className="h-6 w-6" />} title="No resume uploaded" description="Upload your first resume to share with recruiters." action={{ label: "Upload Resume" }} />
+      </div>
+    );
+  }
+  const studentResume = data.resume;
   return (
     <div>
       <PageHeader

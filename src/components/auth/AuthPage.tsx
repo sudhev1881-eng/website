@@ -10,35 +10,59 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
+import { useAuth } from "@/providers/auth-provider";
+import { ApiError } from "@/lib/api";
 import { fadeInVariants } from "@/lib/motion";
 
 export function AuthPage() {
   const router = useRouter();
+  const { login, register } = useAuth();
+  const [submitting, setSubmitting] = React.useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast.success("Welcome back!");
-    router.push("/student");
+    const form = new FormData(e.currentTarget);
+    const email = form.get("email") as string;
+    const password = form.get("password") as string;
+
+    setSubmitting(true);
+    try {
+      const res = await login(email, password);
+      toast.success("Welcome back!");
+      router.push(res.user.role === "admin" ? "/admin" : "/student");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Login failed");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast.success("Account created successfully!");
-    router.push("/student");
+    const form = new FormData(e.currentTarget);
+    setSubmitting(true);
+    try {
+      await register({
+        name: form.get("name") as string,
+        email: form.get("email") as string,
+        password: form.get("password") as string,
+        university: form.get("university") as string,
+      });
+      toast.success("Account created successfully!");
+      router.push("/student");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Registration failed");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="flex min-h-screen">
       <div className="hidden w-1/2 bg-gradient-to-br from-primary via-secondary to-accent p-12 lg:flex lg:flex-col lg:justify-between">
         <StudentLinkLogo />
-        <motion.div
-          initial="hidden"
-          animate="visible"
-          variants={fadeInVariants}
-        >
-          <h2 className="text-3xl font-bold text-white">
-            Build your digital identity
-          </h2>
+        <motion.div initial="hidden" animate="visible" variants={fadeInVariants}>
+          <h2 className="text-3xl font-bold text-white">Build your digital identity</h2>
           <p className="mt-4 max-w-md text-white/80">
             Join thousands of students connecting with recruiters through NFC-powered digital profiles.
           </p>
@@ -59,12 +83,7 @@ export function AuthPage() {
           <Link href="/"><StudentLinkLogo /></Link>
         </div>
 
-        <motion.div
-          className="w-full max-w-md"
-          initial="hidden"
-          animate="visible"
-          variants={fadeInVariants}
-        >
+        <motion.div className="w-full max-w-md" initial="hidden" animate="visible" variants={fadeInVariants}>
           <Card className="shadow-card">
             <CardHeader className="text-center">
               <CardTitle className="text-2xl">Welcome to StudentLink</CardTitle>
@@ -79,22 +98,22 @@ export function AuthPage() {
 
                 <TabsContent value="login">
                   <form onSubmit={handleLogin} className="space-y-4">
-                    <Input label="Email" type="email" placeholder="you@university.edu" required />
-                    <Input label="Password" type="password" placeholder="••••••••" required />
-                    <Button type="submit" className="w-full">Sign In</Button>
+                    <Input label="Email" name="email" type="email" placeholder="you@university.edu" defaultValue="alex.morgan@stanford.edu" required />
+                    <Input label="Password" name="password" type="password" placeholder="••••••••" defaultValue="student123" required />
+                    <Button type="submit" className="w-full" loading={submitting}>Sign In</Button>
                   </form>
-                  <p className="mt-4 text-center text-sm text-muted-foreground">
-                    <button type="button" className="text-primary hover:underline">Forgot password?</button>
+                  <p className="mt-4 text-center text-xs text-muted-foreground">
+                    Demo: alex.morgan@stanford.edu / student123 · Admin: admin@studentlink.local / admin123
                   </p>
                 </TabsContent>
 
                 <TabsContent value="register">
                   <form onSubmit={handleRegister} className="space-y-4">
-                    <Input label="Full Name" placeholder="Alex Morgan" required />
-                    <Input label="Email" type="email" placeholder="you@university.edu" required />
-                    <Input label="University" placeholder="Stanford University" required />
-                    <Input label="Password" type="password" placeholder="••••••••" required />
-                    <Button type="submit" className="w-full">Create Account</Button>
+                    <Input label="Full Name" name="name" placeholder="Alex Morgan" required />
+                    <Input label="Email" name="email" type="email" placeholder="you@university.edu" required />
+                    <Input label="University" name="university" placeholder="Stanford University" />
+                    <Input label="Password" name="password" type="password" placeholder="••••••••" required />
+                    <Button type="submit" className="w-full" loading={submitting}>Create Account</Button>
                   </form>
                 </TabsContent>
               </Tabs>
@@ -102,9 +121,7 @@ export function AuthPage() {
               <div className="mt-6 text-center">
                 <p className="text-xs text-muted-foreground">
                   Admin?{" "}
-                  <Link href="/admin" className="font-medium text-primary hover:underline">
-                    Go to Admin Dashboard
-                  </Link>
+                  <Link href="/admin" className="font-medium text-primary hover:underline">Go to Admin Dashboard</Link>
                 </p>
               </div>
             </CardContent>

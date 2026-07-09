@@ -8,31 +8,44 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
+import { Spinner } from "@/components/ui/spinner";
 import { ProgramNfcCardDialog } from "./ProgramNfcCardDialog";
-import { adminStudents } from "@/data/mock-admin";
+import { api, type AdminStudent } from "@/lib/api";
 
-const statusVariant = {
-  active: "success" as const,
-  pending: "warning" as const,
-  inactive: "outline" as const,
+const statusVariant: Record<string, "success" | "warning" | "outline"> = {
+  active: "success",
+  pending: "warning",
+  inactive: "outline",
 };
 
-function slugFromStudent(student: (typeof adminStudents)[0]): string {
-  return student.name.toLowerCase().replace(/\s+/g, "-");
-}
-
 export function AdminStudents() {
+  const [students, setStudents] = React.useState<AdminStudent[]>([]);
+  const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
-  const [programStudent, setProgramStudent] = React.useState<
-    (typeof adminStudents)[0] | null
-  >(null);
+  const [programStudent, setProgramStudent] = React.useState<AdminStudent | null>(null);
 
-  const filtered = adminStudents.filter(
+  React.useEffect(() => {
+    api.admin
+      .students()
+      .then(setStudents)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = students.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
       s.email.toLowerCase().includes(search.toLowerCase()) ||
       s.university.toLowerCase().includes(search.toLowerCase()),
   );
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -69,10 +82,7 @@ export function AdminStudents() {
               </thead>
               <tbody>
                 {filtered.map((student) => (
-                  <tr
-                    key={student.id}
-                    className="border-b border-border last:border-0 hover:bg-surface/50"
-                  >
+                  <tr key={student.id} className="border-b border-border last:border-0 hover:bg-surface/50">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar name={student.name} size="sm" />
@@ -82,26 +92,14 @@ export function AdminStudents() {
                         </div>
                       </div>
                     </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
-                      {student.university}
-                    </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                      {student.major}
-                    </td>
+                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{student.university}</td>
+                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">{student.major}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={statusVariant[student.status]}>
-                        {student.status}
-                      </Badge>
+                      <Badge variant={statusVariant[student.status] ?? "outline"}>{student.status}</Badge>
                     </td>
-                    <td className="hidden px-4 py-3 font-mono text-xs sm:table-cell">
-                      {student.nfcCard ?? "—"}
-                    </td>
+                    <td className="hidden px-4 py-3 font-mono text-xs sm:table-cell">{student.nfcCard ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setProgramStudent(student)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setProgramStudent(student)}>
                         <Nfc className="h-4 w-4" />
                         <span className="hidden sm:inline">Program NFC Card</span>
                         <span className="sm:hidden">Program</span>
@@ -122,7 +120,7 @@ export function AdminStudents() {
           student={{
             id: programStudent.id,
             name: programStudent.name,
-            slug: slugFromStudent(programStudent),
+            slug: programStudent.username,
             cardNumber: programStudent.nfcCard,
           }}
         />

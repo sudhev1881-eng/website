@@ -6,9 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/charts/SimpleBarChart";
-import { studentSkills } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentSkills() {
+  const { data } = useStudentData();
+  if (!data) return null;
+  const studentSkills = data.skills;
   const categories = [...new Set(studentSkills.map((s) => s.category))];
 
   return (

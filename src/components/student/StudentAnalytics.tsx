@@ -5,9 +5,12 @@ import { StatCard } from "@/components/layout/StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SimpleBarChart, ProgressBar } from "@/components/charts/SimpleBarChart";
 import { Eye, Nfc, Download } from "lucide-react";
-import { studentStats, analyticsData } from "@/data/mock-student";
+import { useStudentData } from "@/providers/student-data-provider";
 
 export function StudentAnalytics() {
+  const { data } = useStudentData();
+  if (!data) return null;
+  const { stats: studentStats, analytics: analyticsData } = data;
   return (
     <div>
       <PageHeader
