@@ -1,21 +1,13 @@
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
-import { Instrument_Serif, Press_Start_2P } from "next/font/google";
+import { Inter } from "next/font/google";
+import { ThemeProvider } from "@/providers/theme-provider";
+import { Toaster } from "@/components/ui/toast";
 import { site } from "@/data/site";
 import "./globals.css";
 
-const instrumentSerif = Instrument_Serif({
+const inter = Inter({
   subsets: ["latin"],
-  weight: "400",
-  variable: "--font-instrument-serif",
-  display: "swap",
-});
-
-const pressStart = Press_Start_2P({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-press-start",
+  variable: "--font-inter",
   display: "swap",
 });
 
@@ -36,11 +28,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} ${instrumentSerif.variable} ${pressStart.variable} h-full scroll-smooth lg:snap-y lg:snap-proximity`}
-    >
-      <body className="min-h-full overflow-x-hidden font-sans antialiased">{children}</body>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full`}>
+      <body className="min-h-full overflow-x-hidden bg-background font-sans text-foreground antialiased">
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

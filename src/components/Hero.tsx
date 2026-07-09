@@ -3,7 +3,7 @@
 import { motion, useReducedMotion, useScroll, useSpring, useTransform } from "framer-motion";
 import { useRef } from "react";
 import { site } from "@/data/site";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 import { HeroVideo } from "@/components/hero/HeroVideo";
 import { useHeroSectionSnap } from "@/hooks/useHeroSectionSnap";
 import {

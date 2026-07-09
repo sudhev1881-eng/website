@@ -12,6 +12,8 @@ export function GlassPill({
   as: Component = "div",
 }: GlassPillProps) {
   return (
-    <Component className={cn("glass-pill", className)}>{children}</Component>
+    <Component className={cn("glass-pill glass-surface", className)}>
+      {children}
+    </Component>
   );
 }

@@ -1,36 +1,75 @@
 @import "tailwindcss";
 
 :root {
-  --glass-bg: rgba(0, 0, 0, 0.35);
-  --glass-border: rgba(255, 255, 255, 0.12);
+  --color-primary: #2563eb;
+  --color-secondary: #6366f1;
+  --color-accent: #8b5cf6;
+  --color-background: #ffffff;
+  --color-surface: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-muted: #64748b;
+  --color-muted-foreground: #64748b;
+  --color-border: #e2e8f0;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-ring: #2563eb;
+
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.24);
   --glass-blur: 16px;
 
-  --hero-text: #ffffff;
-  --hero-text-muted: rgba(255, 255, 255, 0.85);
-
-  --btn-primary-bg: #ffffff;
-  --btn-primary-text: #000000;
-  --btn-secondary-bg: rgba(255, 255, 255, 0.12);
-  --btn-secondary-text: #ffffff;
-
   --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
-  --duration-smooth: 380ms;
+  --duration-smooth: 300ms;
+
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 16px rgba(15, 23, 42, 0.04);
+  --shadow-card-hover: 0 4px 12px rgba(15, 23, 42, 0.08), 0 12px 32px rgba(15, 23, 42, 0.06);
 }
 
-.hero-video-fade {
-  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+.dark {
+  --color-primary: #3b82f6;
+  --color-secondary: #818cf8;
+  --color-accent: #a78bfa;
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-foreground: #f8fafc;
+  --color-muted: #94a3b8;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #334155;
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  --color-warning: #fbbf24;
+  --color-ring: #3b82f6;
+
+  --glass-bg: rgba(15, 23, 42, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2), 0 4px 16px rgba(0, 0, 0, 0.15);
+  --shadow-card-hover: 0 4px 12px rgba(0, 0, 0, 0.25), 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --font-serif: var(--font-instrument-serif), Georgia, serif;
-  --font-pixel: var(--font-press-start), monospace;
-}
+  --font-sans: var(--font-inter), system-ui, sans-serif;
 
-.font-pixel {
-  font-family: var(--font-pixel);
+  --color-primary: var(--color-primary);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-foreground: var(--color-foreground);
+  --color-muted: var(--color-muted);
+  --color-muted-foreground: var(--color-muted-foreground);
+  --color-border: var(--color-border);
+  --color-success: var(--color-success);
+  --color-error: var(--color-error);
+  --color-warning: var(--color-warning);
+  --color-ring: var(--color-ring);
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
 }
 
 *,
@@ -40,8 +79,8 @@
 }
 
 html {
-  background: #ffffff;
-  color: #1a1a1a;
+  background: var(--color-background);
+  color: var(--color-foreground);
   scroll-behavior: smooth;
 }
 
@@ -51,8 +90,9 @@ body {
   font-family: var(--font-sans);
   font-weight: 400;
   font-size: 16px;
-  line-height: 1.7;
-  color: #1a1a1a;
+  line-height: 1.6;
+  color: var(--color-foreground);
+  background: var(--color-background);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -62,7 +102,7 @@ section[id] {
 }
 
 ::selection {
-  background: rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 a {
@@ -70,9 +110,11 @@ a {
   text-decoration: none;
 }
 
-hr {
-  border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+.glass-surface {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
 }
 
 .glass-pill {
@@ -83,6 +125,24 @@ hr {
   border-radius: 9999px;
 }
 
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.shadow-card-hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* Portfolio legacy styles */
+.hero-video-fade {
+  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+.font-pixel {
+  font-family: var(--font-pixel, monospace);
+}
+
 .glass-nav-group {
   background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -91,7 +151,6 @@ hr {
   border-radius: 9999px;
 }
 
-/* Workflow diagram — always-on ambient animation */
 .diagram-line {
   stroke: #ccc;
   stroke-width: 1;
@@ -122,10 +181,7 @@ hr {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .diagram-line {
-    animation: none;
-  }
-
+  .diagram-line,
   .diagram-center-pulse {
     animation: none;
   }

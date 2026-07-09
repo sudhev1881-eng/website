@@ -67,6 +67,37 @@ export const heroItemVariants = {
   },
 };
 
+export const fadeInVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: smoothEase },
+  },
+};
+
+export const staggerContainer = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1,
+    },
+  },
+};
+
+export const pageTransition = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+  transition: fadeTransition,
+};
+
+export const cardHoverTransition = {
+  y: -2,
+  transition: { duration: 0.25, ease: smoothEase },
+};
+
 export function useSafeMotion() {
   const reduced = useReducedMotion();
 
@@ -81,5 +112,23 @@ export function useSafeMotion() {
           },
         }
       : heroItemVariants,
+    fadeIn: reduced
+      ? {
+          hidden: { opacity: 0 },
+          visible: { opacity: 1, transition: { duration: 0.3 } },
+        }
+      : fadeInVariants,
+    stagger: reduced
+      ? { hidden: {}, visible: { transition: { staggerChildren: 0 } } }
+      : staggerContainer,
+    cardHover: reduced ? {} : cardHoverTransition,
+    page: reduced
+      ? {
+          initial: { opacity: 0 },
+          animate: { opacity: 1 },
+          exit: { opacity: 0 },
+          transition: { duration: 0.2 },
+        }
+      : pageTransition,
   };
 }
