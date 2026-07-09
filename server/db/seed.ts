@@ -188,10 +188,19 @@ async function seed() {
     );
   }
 
+  // Pre-registered student for Google name-claim demo (no login yet)
+  await query(
+    `INSERT INTO students (username, name, university, major, status, user_id)
+     VALUES ($1, $2, $3, $4, 'pending', NULL)
+     ON CONFLICT (username) DO NOTHING`,
+    ["james-wilson", "JAMES WILSON", "UC Berkeley", "Data Science"],
+  );
+
   console.log("Seed complete.");
   console.log("  Admin:   admin@studentlink.local / admin123");
   console.log("  Student: alex.morgan@stanford.edu / student123");
   console.log("  Student: sarah.chen@mit.edu / student123");
+  console.log("  Google claim demo: pre-registered JAMES WILSON (no account yet)");
   console.log("  Admin user id:", adminUser.rows[0].id);
 
   await closePool();

@@ -10,8 +10,27 @@ export interface JwtPayload {
   studentId?: string;
 }
 
+export interface ClaimTokenPayload {
+  purpose: "google_claim";
+  googleId: string;
+  email: string;
+  googleName: string;
+}
+
 export function signToken(payload: JwtPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+}
+
+export function signClaimToken(payload: ClaimTokenPayload): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
+}
+
+export function verifyClaimToken(token: string): ClaimTokenPayload {
+  const payload = jwt.verify(token, JWT_SECRET) as ClaimTokenPayload;
+  if (payload.purpose !== "google_claim") {
+    throw new Error("Invalid claim token");
+  }
+  return payload;
 }
 
 export function verifyToken(token: string): JwtPayload {

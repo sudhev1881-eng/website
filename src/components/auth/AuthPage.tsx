@@ -12,12 +12,51 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/toast";
 import { useAuth } from "@/providers/auth-provider";
 import { ApiError } from "@/lib/api";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { NameClaimDialog } from "@/components/auth/NameClaimDialog";
 import { fadeInVariants } from "@/lib/motion";
 
 export function AuthPage() {
   const router = useRouter();
-  const { login, register } = useAuth();
+  const { login, register, googleSignIn, googleClaim } = useAuth();
   const [submitting, setSubmitting] = React.useState(false);
+  const [claimOpen, setClaimOpen] = React.useState(false);
+  const [claimToken, setClaimToken] = React.useState<string | null>(null);
+  const [claimEmail, setClaimEmail] = React.useState("");
+
+  const handleGoogle = async (credential: string) => {
+    setSubmitting(true);
+    try {
+      const res = await googleSignIn(credential);
+      if (res.needsClaim && res.claimToken) {
+        setClaimToken(res.claimToken);
+        setClaimEmail(res.email ?? "");
+        setClaimOpen(true);
+        return;
+      }
+      toast.success("Signed in with Google");
+      router.push("/student");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Google sign-in failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClaim = async (firstName: string, lastName: string) => {
+    if (!claimToken) return;
+    setSubmitting(true);
+    try {
+      const res = await googleClaim({ claimToken, firstName, lastName });
+      setClaimOpen(false);
+      toast.success(`Welcome, ${res.matchedName ?? "student"}!`);
+      router.push("/student");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Name did not match our records");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -97,13 +136,26 @@ export function AuthPage() {
                 </TabsList>
 
                 <TabsContent value="login">
-                  <form onSubmit={handleLogin} className="space-y-4">
-                    <Input label="Email" name="email" type="email" placeholder="you@university.edu" defaultValue="alex.morgan@stanford.edu" required />
-                    <Input label="Password" name="password" type="password" placeholder="••••••••" defaultValue="student123" required />
-                    <Button type="submit" className="w-full" loading={submitting}>Sign In</Button>
-                  </form>
+                  <div className="space-y-4">
+                    <GoogleSignInButton onCredential={handleGoogle} disabled={submitting} />
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-border" />
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-background px-2 text-muted-foreground">or email</span>
+                      </div>
+                    </div>
+                    <form onSubmit={handleLogin} className="space-y-4">
+                      <Input label="Email" name="email" type="email" placeholder="you@university.edu" defaultValue="alex.morgan@stanford.edu" required />
+                      <Input label="Password" name="password" type="password" placeholder="••••••••" defaultValue="student123" required />
+                      <Button type="submit" className="w-full" loading={submitting}>Sign In</Button>
+                    </form>
+                  </div>
                   <p className="mt-4 text-center text-xs text-muted-foreground">
-                    Demo: alex.morgan@stanford.edu / student123 · Admin: admin@studentlink.local / admin123
+                    Students: use Google, then enter your name in CAPS to match NFC records.
+                    <br />
+                    Demo email: alex.morgan@stanford.edu / student123
                   </p>
                 </TabsContent>
 
@@ -127,6 +179,14 @@ export function AuthPage() {
             </CardContent>
           </Card>
         </motion.div>
+
+        <NameClaimDialog
+          open={claimOpen}
+          email={claimEmail}
+          onSubmit={handleClaim}
+          onCancel={() => setClaimOpen(false)}
+          submitting={submitting}
+        />
       </div>
     </div>
   );

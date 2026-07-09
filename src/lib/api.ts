@@ -99,6 +99,18 @@ export interface AuthResponse {
   student?: { id: string; username: string };
 }
 
+export interface GoogleAuthResponse {
+  needsClaim: boolean;
+  token?: string;
+  user?: AuthUser;
+  studentId?: string;
+  student?: { id: string; username: string };
+  claimToken?: string;
+  email?: string;
+  message?: string;
+  matchedName?: string;
+}
+
 export interface StudentProfile {
   id: string;
   name: string;
@@ -291,6 +303,20 @@ export const api = {
       }),
 
     me: () => request<{ user: AuthUser; student: { id: string; username: string; name: string } | null }>("/auth/me"),
+
+    google: (credential: string) =>
+      request<GoogleAuthResponse>("/auth/google", {
+        method: "POST",
+        body: JSON.stringify({ credential }),
+        auth: false,
+      }),
+
+    googleClaim: (data: { claimToken: string; firstName: string; lastName: string }) =>
+      request<GoogleAuthResponse>("/auth/google/claim", {
+        method: "POST",
+        body: JSON.stringify(data),
+        auth: false,
+      }),
   },
 
   students: {
@@ -373,6 +399,12 @@ export const api = {
       status?: string;
     }) =>
       request<AdminStudent>("/admin/students", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    preregisterStudent: (data: { name: string; university?: string; major?: string }) =>
+      request<AdminStudent>("/admin/students/preregister", {
         method: "POST",
         body: JSON.stringify(data),
       }),

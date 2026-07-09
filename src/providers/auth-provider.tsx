@@ -15,6 +15,12 @@ interface AuthContextValue {
     name: string;
     university?: string;
   }) => Promise<import("@/lib/api").AuthResponse>;
+  googleSignIn: (credential: string) => Promise<import("@/lib/api").GoogleAuthResponse>;
+  googleClaim: (data: {
+    claimToken: string;
+    firstName: string;
+    lastName: string;
+  }) => Promise<import("@/lib/api").GoogleAuthResponse>;
   logout: () => void;
 }
 
@@ -58,6 +64,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return res;
   };
 
+  const googleSignIn = async (credential: string) => {
+    const res = await api.auth.google(credential);
+    if (!res.needsClaim && res.token && res.user) {
+      setToken(res.token);
+      setUser(res.user);
+    }
+    return res;
+  };
+
+  const googleClaim = async (data: {
+    claimToken: string;
+    firstName: string;
+    lastName: string;
+  }) => {
+    const res = await api.auth.googleClaim(data);
+    if (res.token && res.user) {
+      setToken(res.token);
+      setUser(res.user);
+    }
+    return res;
+  };
+
   const logout = () => {
     clearToken();
     setUser(null);
@@ -65,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, googleSignIn, googleClaim, logout }}>
       {children}
     </AuthContext.Provider>
   );

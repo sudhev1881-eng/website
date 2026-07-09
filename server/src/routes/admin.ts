@@ -30,10 +30,10 @@ adminRouter.get("/students", async (_req, res) => {
   try {
     const result = await query(
       `SELECT s.id, s.name, s.username, u.email, s.university, s.major,
-              s.status, s.profile_views, s.created_at,
+              s.status, s.profile_views, s.created_at, s.user_id,
               nc.card_number AS nfc_card
        FROM students s
-       JOIN users u ON u.id = s.user_id
+       LEFT JOIN users u ON u.id = s.user_id
        LEFT JOIN nfc_cards nc ON nc.student_id = s.id AND nc.status = 'active'
        ORDER BY s.name`,
     );
@@ -43,10 +43,10 @@ adminRouter.get("/students", async (_req, res) => {
         id: r.id,
         name: r.name,
         username: r.username,
-        email: r.email,
+        email: r.email ?? null,
         university: r.university,
         major: r.major,
-        status: r.status,
+        status: r.user_id ? r.status : "unclaimed",
         nfcCard: r.nfc_card,
         profileViews: r.profile_views,
         joinedAt: r.created_at?.toISOString().split("T")[0],
@@ -105,6 +105,54 @@ adminRouter.post("/students", async (req, res) => {
   } catch (err) {
     console.error("POST /admin/students error:", err);
     res.status(500).json({ error: "Failed to create student" });
+  }
+});
+
+/** POST /api/admin/students/preregister — name only, for Google claim flow */
+adminRouter.post("/students/preregister", async (req, res) => {
+  const { name, university, major } = req.body;
+
+  if (!name) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+
+  const legalName = name.trim().replace(/\s+/g, " ").toUpperCase();
+
+  try {
+    const existing = await query(
+      `SELECT id FROM students WHERE UPPER(TRIM(name)) = $1 AND user_id IS NULL`,
+      [legalName],
+    );
+    if (existing.rowCount) {
+      res.status(409).json({ error: "A pending profile with this name already exists" });
+      return;
+    }
+
+    const username = await uniqueUsername(slugify(legalName));
+
+    const result = await query(
+      `INSERT INTO students (username, name, university, major, status, user_id)
+       VALUES ($1, $2, $3, $4, 'pending', NULL) RETURNING *`,
+      [username, legalName, university ?? "", major ?? ""],
+    );
+
+    const s = result.rows[0];
+    res.status(201).json({
+      id: s.id,
+      name: s.name,
+      username: s.username,
+      email: null,
+      university: s.university,
+      major: s.major,
+      status: "unclaimed",
+      nfcCard: null,
+      profileViews: 0,
+      joinedAt: s.created_at?.toISOString().split("T")[0],
+    });
+  } catch (err) {
+    console.error("Preregister error:", err);
+    res.status(500).json({ error: "Failed to pre-register student" });
   }
 });
 
