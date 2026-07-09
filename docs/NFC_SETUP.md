@@ -29,6 +29,16 @@ Verify the daemon is running:
 systemctl status pcscd
 ```
 
+**No systemd?** (Docker, WSL1, some cloud VMs) `systemctl` will fail with *"System has not been booted with systemd"*. Start PC/SC manually instead:
+
+```bash
+sudo pcscd -f &
+# or in another terminal:
+sudo pcscd
+```
+
+**Dev without USB hardware?** Skip pcscd entirely and keep `NFC_READER_ENABLED=false` in `server/.env` — stub mode works for UI and API testing.
+
 ## 2. Install Node dependencies
 
 From the project root:
