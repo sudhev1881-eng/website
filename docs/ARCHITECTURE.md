@@ -64,9 +64,9 @@ Browser  ──HTTP──►  Next.js Frontend  ──HTTP──►  Node.js RES
 3. Searches for a student in the Students module
 4. Clicks **Program NFC Card**
 5. Frontend sends `POST /api/nfc/program` to the Node.js backend
-6. Backend communicates with the USB NFC reader on the server
-7. Backend writes the secure profile URL to the card
-8. Backend verifies the write
+6. Backend communicates with the USB NFC reader on the server (via `nfc-pcsc` + PC/SC when `NFC_READER_ENABLED=true`)
+7. Backend writes an NDEF URI record with the profile URL (`/u/{slug}?src=nfc`)
+8. Backend verifies the write by reading the tag back
 9. Backend returns success/failure JSON
 10. Admin Dashboard displays the result in the browser
 

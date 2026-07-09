@@ -4,9 +4,11 @@
  * Runs on the Ubuntu server and communicates with the USB NFC reader.
  * The browser NEVER calls this directly — only the REST API does.
  *
- * When NFC_READER_ENABLED=true, replace the stub with actual reader drivers
- * (e.g. ACR122U via node-nfc-pcsc or similar).
+ * NFC_READER_ENABLED=false  → stub mode (development without hardware)
+ * NFC_READER_ENABLED=true   → PC/SC via nfc-pcsc (ACR122U, etc.)
  */
+
+import { nfcHardware } from "./nfc-hardware.js";
 
 export interface NfcWriteResult {
   success: boolean;
@@ -20,6 +22,7 @@ export interface NfcReaderStatus {
   connected: boolean;
   readerName: string | null;
   message: string;
+  mode: "stub" | "hardware";
 }
 
 export class NfcService {
@@ -29,53 +32,50 @@ export class NfcService {
     this.enabled = process.env.NFC_READER_ENABLED === "true";
   }
 
+  isHardwareEnabled(): boolean {
+    return this.enabled;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.enabled) {
+      await nfcHardware.initialize();
+    }
+  }
+
   async getStatus(): Promise<NfcReaderStatus> {
     if (!this.enabled) {
       return {
         connected: false,
         readerName: null,
-        message: "NFC reader disabled (stub mode). Set NFC_READER_ENABLED=true on the server.",
+        mode: "stub",
+        message:
+          "NFC reader disabled (stub mode). Set NFC_READER_ENABLED=true on the server with a USB reader attached.",
       };
     }
 
-    // TODO: Detect USB NFC reader via pcsc-lite / node-nfc-pcsc
-    return {
-      connected: true,
-      readerName: "ACR122U",
-      message: "Reader ready",
-    };
+    return nfcHardware.getStatus();
   }
 
-  async programCard(studentSlug: string, cardNumber?: string): Promise<NfcWriteResult> {
-    const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
-    const profileUrl = `${siteUrl}/u/${studentSlug}`;
+  buildProfileUrl(studentSlug: string): string {
+    const siteUrl = (process.env.SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    return `${siteUrl}/u/${studentSlug}?src=nfc`;
+  }
+
+  async programCard(studentSlug: string, _cardNumber?: string): Promise<NfcWriteResult> {
+    const profileUrl = this.buildProfileUrl(studentSlug);
 
     if (!this.enabled) {
-      // Stub mode for development without physical hardware
       await this.simulateWriteDelay();
       return {
         success: true,
         cardUid: `STUB-${Date.now().toString(16).toUpperCase()}`,
         urlWritten: profileUrl,
         verified: true,
-        message: `[STUB] Card programmed with ${profileUrl}. Enable NFC_READER_ENABLED on the server for real hardware.`,
+        message: `[STUB] Card programmed with ${profileUrl}. Set NFC_READER_ENABLED=true on the server for real hardware.`,
       };
     }
 
-    // TODO: Real NFC write flow:
-    // 1. Wait for card on reader
-    // 2. Write NDEF URI record with profileUrl
-    // 3. Read back and verify
-    // 4. Store card UID + student mapping in PostgreSQL
-
-    await this.simulateWriteDelay();
-    return {
-      success: true,
-      cardUid: "UNKNOWN",
-      urlWritten: profileUrl,
-      verified: true,
-      message: `Card programmed with ${profileUrl}`,
-    };
+    return nfcHardware.programCard(profileUrl);
   }
 
   private simulateWriteDelay(): Promise<void> {

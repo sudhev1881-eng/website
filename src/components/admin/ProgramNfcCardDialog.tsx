@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Nfc, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Nfc, CheckCircle2, XCircle, Loader2, Usb } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,10 +11,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
-import { api, type NfcProgramResult } from "@/lib/api";
+import { api, type NfcProgramResult, type NfcReaderStatus } from "@/lib/api";
 
-type ProgramStep = "ready" | "writing" | "verifying" | "success" | "error";
+type ProgramStep = "ready" | "waiting" | "writing" | "verifying" | "success" | "error";
 
 interface ProgramNfcCardDialogProps {
   open: boolean;
@@ -35,11 +36,13 @@ export function ProgramNfcCardDialog({
   const [step, setStep] = React.useState<ProgramStep>("ready");
   const [result, setResult] = React.useState<NfcProgramResult | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [readerStatus, setReaderStatus] = React.useState<NfcReaderStatus | null>(null);
 
   const resetState = () => {
     setStep("ready");
     setResult(null);
     setErrorMessage(null);
+    setReaderStatus(null);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -47,12 +50,26 @@ export function ProgramNfcCardDialog({
     onOpenChange(nextOpen);
   };
 
+  React.useEffect(() => {
+    if (!open) return;
+    api.nfc
+      .status()
+      .then(setReaderStatus)
+      .catch(() =>
+        setReaderStatus({
+          connected: false,
+          readerName: null,
+          mode: "stub",
+          message: "Could not reach NFC status endpoint",
+        }),
+      );
+  }, [open]);
+
   const handleProgram = async () => {
-    setStep("writing");
+    setStep(readerStatus?.mode === "hardware" ? "waiting" : "writing");
     setErrorMessage(null);
 
     try {
-      // Backend writes to USB NFC reader on the server, then verifies
       setStep("verifying");
       const response = await api.nfc.program({
         studentId: student.id,
@@ -87,11 +104,28 @@ export function ProgramNfcCardDialog({
           </DialogTitle>
           <DialogDescription>
             Programming card for <strong>{student.name}</strong>. Place a blank
-            card on the NFC reader connected to the <strong>server</strong>.
+            NTAG card on the NFC reader connected to the <strong>server</strong>.
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
+          {readerStatus ? (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+              <Usb className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant={readerStatus.connected ? "success" : "warning"}>
+                    {readerStatus.mode === "stub" ? "Stub mode" : readerStatus.connected ? "Reader connected" : "No reader"}
+                  </Badge>
+                  {readerStatus.readerName ? (
+                    <span className="truncate text-xs text-muted-foreground">{readerStatus.readerName}</span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{readerStatus.message}</p>
+              </div>
+            </div>
+          ) : null}
+
           {step === "ready" && (
             <div className="space-y-4 text-center">
               <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10">
@@ -110,16 +144,20 @@ export function ProgramNfcCardDialog({
             </div>
           )}
 
-          {(step === "writing" || step === "verifying") && (
+          {(step === "waiting" || step === "writing" || step === "verifying") && (
             <div className="flex flex-col items-center gap-4 py-6 text-center">
               <Spinner size="lg" />
               <p className="text-sm font-medium text-foreground">
-                {step === "writing"
-                  ? "Writing profile URL to card via server..."
-                  : "Verifying write on server..."}
+                {step === "waiting"
+                  ? "Waiting for card on server reader..."
+                  : step === "writing"
+                    ? "Writing profile URL to card via server..."
+                    : "Verifying write on server..."}
               </p>
               <p className="text-xs text-muted-foreground">
-                Do not remove the card from the reader
+                {readerStatus?.mode === "hardware"
+                  ? "Place the NTAG card on the reader and hold until complete"
+                  : "Do not remove the card from the reader"}
               </p>
             </div>
           )}
@@ -162,7 +200,7 @@ export function ProgramNfcCardDialog({
               </Button>
             </>
           )}
-          {(step === "writing" || step === "verifying") && (
+          {(step === "waiting" || step === "writing" || step === "verifying") && (
             <Button disabled>
               <Loader2 className="h-4 w-4 animate-spin" />
               Please wait...

@@ -81,7 +81,9 @@ Open [http://localhost:3000](http://localhost:3000)
 | GET    | `/api/admin/universities`  | Admin   | List universities              |
 | GET    | `/api/admin/analytics`     | Admin   | Platform analytics             |
 | GET    | `/api/admin/storage`       | Admin   | Storage usage from disk        |
-| POST   | `/api/nfc/program`         | Admin   | Program NFC card               |
+| POST   | `/api/nfc/program`         | Admin   | Program NFC card (USB reader)  |
+
+See [docs/NFC_SETUP.md](docs/NFC_SETUP.md) for USB reader setup on Ubuntu.
 
 ## NFC Card Programming
 

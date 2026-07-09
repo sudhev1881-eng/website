@@ -28,7 +28,20 @@ cp .env.example .env
 npm run dev
 ```
 
-Set `NFC_READER_ENABLED=true` when the USB reader is connected to the server and drivers are installed.
+Set `NFC_READER_ENABLED=true` when the USB reader is connected to the server and PC/SC is installed.
+
+See [docs/NFC_SETUP.md](../docs/NFC_SETUP.md) for full Ubuntu setup (pcscd, libpcsclite-dev, ACR122U).
+
+### Hardware mode
+
+When enabled, the API uses `nfc-pcsc` to:
+
+1. Detect the USB reader via PC/SC
+2. Wait for an NTAG card (configurable timeout)
+3. Write an NDEF URI record (`/u/{slug}?src=nfc`)
+4. Read back and verify the URL
+
+Status endpoint returns `mode: "hardware" | "stub"` and the connected reader name.
 
 ## Production (Ubuntu server)
 

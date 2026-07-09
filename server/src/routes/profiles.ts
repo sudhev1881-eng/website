@@ -40,8 +40,18 @@ profilesRouter.get("/:slug", async (req, res) => {
 
     const s = studentResult.rows[0];
 
+    const trackNfcTap = req.query.src === "nfc";
+
     // Increment view count (async, don't block response)
     query(`UPDATE students SET profile_views = profile_views + 1 WHERE id = $1`, [s.id]).catch(() => {});
+
+    if (trackNfcTap) {
+      query(`UPDATE students SET nfc_taps = nfc_taps + 1 WHERE id = $1`, [s.id]).catch(() => {});
+      query(
+        `UPDATE nfc_cards SET total_taps = total_taps + 1, last_tap_at = NOW() WHERE student_id = $1`,
+        [s.id],
+      ).catch(() => {});
+    }
 
     const [projects, skills, certificates, experience, resume] = await Promise.all([
       query(`SELECT * FROM projects WHERE student_id = $1 ORDER BY sort_order`, [s.id]),

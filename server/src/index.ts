@@ -9,6 +9,7 @@ import { adminRouter } from "./routes/admin.js";
 import { nfcRouter } from "./routes/nfc.js";
 import { uploadsRouter, createUploadsStaticRouter } from "./routes/uploads.js";
 import { ensureStorageReady } from "./services/storage.js";
+import { nfcService } from "./services/nfc.js";
 import { getPool } from "./db/pool.js";
 
 const app = express();
@@ -42,6 +43,15 @@ async function start() {
     console.log("File storage ready");
   } catch (err) {
     console.warn("Storage init warning:", (err as Error).message);
+  }
+
+  if (nfcService.isHardwareEnabled()) {
+    nfcService.initialize().catch((err) => {
+      console.warn("NFC hardware init warning:", (err as Error).message);
+    });
+    console.log("NFC hardware mode enabled — waiting for USB reader");
+  } else {
+    console.log("NFC stub mode (NFC_READER_ENABLED=false)");
   }
 
   app.listen(port, () => {

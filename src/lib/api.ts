@@ -257,6 +257,7 @@ export interface NfcReaderStatus {
   connected: boolean;
   readerName: string | null;
   message: string;
+  mode: "stub" | "hardware";
 }
 
 export interface NfcProgramResult {

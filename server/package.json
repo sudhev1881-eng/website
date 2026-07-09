@@ -18,6 +18,8 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "ndef": "^0.2.0",
+    "nfc-pcsc": "^0.8.1",
     "pg": "^8.13.1"
   },
   "devDependencies": {
