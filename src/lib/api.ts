@@ -51,6 +51,39 @@ async function request<T>(
   return data as T;
 }
 
+function apiOrigin(): string {
+  return (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api").replace(/\/api$/, "");
+}
+
+export function fileUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${apiOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function uploadRequest<T>(path: string, file: File, fieldName = "file"): Promise<T> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append(fieldName, file);
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new ApiError(
+      (data as { error?: string }).error ?? `Upload failed (${res.status})`,
+      res.status,
+    );
+  }
+
+  return data as T;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface AuthUser {
@@ -126,6 +159,7 @@ export interface StudentDashboardData {
     fileSize: string;
     uploadedAt: string;
     version: number;
+    downloadUrl: string | null;
   } | null;
   nfcCard: {
     id: string;
@@ -176,6 +210,49 @@ export interface AdminStudent {
   joinedAt: string;
 }
 
+export interface AdminNfcCard {
+  id: string;
+  cardNumber: string;
+  student: string | null;
+  university: string;
+  status: string;
+  taps: number;
+  issuedAt: string;
+}
+
+export interface AdminUniversity {
+  id: string;
+  name: string;
+  admin: string | null;
+  status: string;
+  students: number;
+  activeCards: number;
+  joinedAt: string;
+}
+
+export interface AdminAnalytics {
+  signupsByMonth: Array<{ month: string; count: number }>;
+  tapsByMonth: Array<{ month: string; count: number }>;
+  topUniversities: Array<{ name: string; taps: number }>;
+  maxTaps: number;
+}
+
+export interface AdminStorageData {
+  used: number;
+  total: number;
+  usedPercent: number;
+  breakdown: Array<{ type: string; size: number; count: number }>;
+}
+
+export interface ResumeVersion {
+  id: string;
+  fileName: string;
+  version: number;
+  active: boolean;
+  uploadedAt: string;
+  downloadUrl: string | null;
+}
+
 export interface NfcReaderStatus {
   connected: boolean;
   readerName: string | null;
@@ -220,6 +297,17 @@ export const api = {
 
     updateProfile: (data: Partial<StudentProfile>) =>
       request("/students/me", { method: "PATCH", body: JSON.stringify(data) }),
+
+    uploadResume: (file: File) =>
+      uploadRequest<StudentDashboardData["resume"] & { id: string }>("/students/me/resume", file),
+
+    resumeHistory: () => request<ResumeVersion[]>("/students/me/resumes"),
+
+    uploadAvatar: (file: File) =>
+      uploadRequest<{ avatarUrl: string }>("/students/me/avatar", file),
+
+    uploadCover: (file: File) =>
+      uploadRequest<{ coverImageUrl: string }>("/students/me/cover", file),
   },
 
   profiles: {
@@ -231,7 +319,68 @@ export const api = {
 
   admin: {
     students: () => request<AdminStudent[]>("/admin/students"),
+
+    createStudent: (data: {
+      email: string;
+      password: string;
+      name: string;
+      university?: string;
+      major?: string;
+      status?: string;
+    }) =>
+      request<AdminStudent>("/admin/students", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    updateStudent: (id: string, data: Partial<Pick<AdminStudent, "name" | "university" | "major" | "status">>) =>
+      request<AdminStudent>(`/admin/students/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    deleteStudent: (id: string) =>
+      request<{ success: boolean }>(`/admin/students/${id}`, { method: "DELETE" }),
+
     stats: () => request<Record<string, number>>("/admin/stats"),
+
+    analytics: () => request<AdminAnalytics>("/admin/analytics"),
+
+    storage: () => request<AdminStorageData>("/admin/storage"),
+
+    nfcCards: () => request<AdminNfcCard[]>("/admin/nfc-cards"),
+
+    createNfcCard: (data: { cardNumber: string; university?: string }) =>
+      request<AdminNfcCard>("/admin/nfc-cards", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    updateNfcCard: (id: string, data: { status?: string; studentId?: string }) =>
+      request<AdminNfcCard>(`/admin/nfc-cards/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    deleteNfcCard: (id: string) =>
+      request<{ success: boolean }>(`/admin/nfc-cards/${id}`, { method: "DELETE" }),
+
+    universities: () => request<AdminUniversity[]>("/admin/universities"),
+
+    createUniversity: (data: { name: string; adminName?: string; status?: string }) =>
+      request<AdminUniversity>("/admin/universities", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    updateUniversity: (id: string, data: { name?: string; adminName?: string; status?: string }) =>
+      request<AdminUniversity>(`/admin/universities/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+
+    deleteUniversity: (id: string) =>
+      request<{ success: boolean }>(`/admin/universities/${id}`, { method: "DELETE" }),
   },
 
   nfc: {

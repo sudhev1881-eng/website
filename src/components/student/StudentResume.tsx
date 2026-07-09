@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { FileText, Download, History } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -7,20 +8,86 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload } from "@/components/ui/upload";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useStudentData } from "@/providers/student-data-provider";
+import { api, fileUrl, type ResumeVersion } from "@/lib/api";
 
 export function StudentResume() {
-  const { data } = useStudentData();
+  const { data, refresh } = useStudentData();
+  const [history, setHistory] = React.useState<ResumeVersion[]>([]);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+
+  const loadHistory = React.useCallback(() => {
+    setHistoryLoading(true);
+    api.students
+      .resumeHistory()
+      .then(setHistory)
+      .catch(console.error)
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  React.useEffect(() => {
+    if (data?.resume) loadHistory();
+  }, [data?.resume, loadHistory]);
+
+  const handleUpload = async (files: File[]) => {
+    const file = files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      await api.students.uploadResume(file);
+      await refresh();
+      loadHistory();
+      toast.success("Resume uploaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = (url: string | null) => {
+    const resolved = fileUrl(url);
+    if (!resolved) {
+      toast.error("No file available for download");
+      return;
+    }
+    window.open(resolved, "_blank");
+  };
+
   if (!data?.resume) {
     return (
       <div>
         <PageHeader title="Resume Manager" description="Upload and manage your resume versions." />
-        <EmptyState icon={<FileText className="h-6 w-6" />} title="No resume uploaded" description="Upload your first resume to share with recruiters." action={{ label: "Upload Resume" }} />
+        <Card className="shadow-card">
+          <CardContent className="p-6">
+            {uploading ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="lg" />
+              </div>
+            ) : (
+              <Upload
+                label="Upload resume"
+                accept=".pdf,.doc,.docx"
+                helperText="PDF recommended, max 10MB"
+                onUpload={handleUpload}
+              />
+            )}
+          </CardContent>
+        </Card>
+        <EmptyState
+          icon={<FileText className="h-6 w-6" />}
+          title="No resume uploaded"
+          description="Upload your first resume to share with recruiters."
+        />
       </div>
     );
   }
+
   const studentResume = data.resume;
+
   return (
     <div>
       <PageHeader
@@ -48,13 +115,15 @@ export function StudentResume() {
               <Badge variant="success">Active</Badge>
             </div>
             <div className="flex gap-2">
-              <Button onClick={() => toast.success("Resume download started")}>
+              <Button onClick={() => handleDownload(studentResume.downloadUrl)}>
                 <Download className="h-4 w-4" />
                 Download
               </Button>
-              <Button variant="outline" onClick={() => toast.info("Preview opened")}>
-                Preview
-              </Button>
+              {studentResume.downloadUrl ? (
+                <Button variant="outline" onClick={() => handleDownload(studentResume.downloadUrl)}>
+                  Preview
+                </Button>
+              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -64,12 +133,18 @@ export function StudentResume() {
             <CardTitle>Upload New Version</CardTitle>
           </CardHeader>
           <CardContent>
-            <Upload
-              label="Upload resume"
-              accept=".pdf,.doc,.docx"
-              helperText="PDF recommended, max 10MB"
-              onUpload={() => toast.success("New resume version uploaded")}
-            />
+            {uploading ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="lg" />
+              </div>
+            ) : (
+              <Upload
+                label="Upload resume"
+                accept=".pdf,.doc,.docx"
+                helperText="PDF recommended, max 10MB"
+                onUpload={handleUpload}
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -81,31 +156,37 @@ export function StudentResume() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {[
-                { version: 3, date: "2025-01-15", name: studentResume.fileName, active: true },
-                { version: 2, date: "2024-11-20", name: "Alex_Morgan_Resume_v2.pdf", active: false },
-                { version: 1, date: "2024-08-15", name: "Alex_Morgan_Resume_v1.pdf", active: false },
-              ].map((v) => (
-                <div
-                  key={v.version}
-                  className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-4 w-4 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm font-medium">{v.name}</p>
-                      <p className="text-xs text-muted-foreground">v{v.version} · {v.date}</p>
+            {historyLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner />
+              </div>
+            ) : history.length > 0 ? (
+              <div className="space-y-3">
+                {history.map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm font-medium">{v.fileName}</p>
+                        <p className="text-xs text-muted-foreground">v{v.version} · {v.uploadedAt}</p>
+                      </div>
                     </div>
+                    {v.active ? (
+                      <Badge variant="primary">Current</Badge>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => handleDownload(v.downloadUrl)}>
+                        Download
+                      </Button>
+                    )}
                   </div>
-                  {v.active ? (
-                    <Badge variant="primary">Current</Badge>
-                  ) : (
-                    <Button variant="ghost" size="sm">Restore</Button>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No version history available.</p>
+            )}
           </CardContent>
         </Card>
       </div>

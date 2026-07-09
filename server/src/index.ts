@@ -7,6 +7,8 @@ import { studentsRouter } from "./routes/students.js";
 import { profilesRouter } from "./routes/profiles.js";
 import { adminRouter } from "./routes/admin.js";
 import { nfcRouter } from "./routes/nfc.js";
+import { uploadsRouter, createUploadsStaticRouter } from "./routes/uploads.js";
+import { ensureStorageReady } from "./services/storage.js";
 import { getPool } from "./db/pool.js";
 
 const app = express();
@@ -19,6 +21,7 @@ app.use(express.json());
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/students", studentsRouter);
+app.use("/api/students", uploadsRouter);
 app.use("/api/profiles", profilesRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/nfc", nfcRouter);
@@ -30,6 +33,15 @@ async function start() {
   } catch (err) {
     console.warn("PostgreSQL not available:", (err as Error).message);
     console.warn("Run: docker compose up -d postgres && npm run db:migrate && npm run db:seed");
+  }
+
+  try {
+    await ensureStorageReady();
+    const staticRouter = await createUploadsStaticRouter();
+    app.use("/api/uploads", staticRouter);
+    console.log("File storage ready");
+  } catch (err) {
+    console.warn("Storage init warning:", (err as Error).message);
   }
 
   app.listen(port, () => {

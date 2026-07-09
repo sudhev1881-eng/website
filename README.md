@@ -66,14 +66,22 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ### API endpoints
 
-| Method | Path                  | Auth   | Description              |
-|--------|-----------------------|--------|--------------------------|
-| POST   | `/api/auth/register`  | No     | Create student account   |
-| POST   | `/api/auth/login`     | No     | Login, returns JWT       |
-| GET    | `/api/students/me`    | Student| Full dashboard data      |
-| GET    | `/api/profiles/:slug` | No     | Public recruiter profile |
-| GET    | `/api/admin/students` | Admin  | List all students        |
-| POST   | `/api/nfc/program`    | Admin  | Program NFC card         |
+| Method | Path                       | Auth    | Description                    |
+|--------|----------------------------|---------|--------------------------------|
+| POST   | `/api/auth/register`       | No      | Create student account         |
+| POST   | `/api/auth/login`          | No      | Login, returns JWT             |
+| GET    | `/api/students/me`         | Student | Full dashboard data            |
+| POST   | `/api/students/me/resume`  | Student | Upload resume (multipart)      |
+| POST   | `/api/students/me/avatar`  | Student | Upload profile image           |
+| GET    | `/api/profiles/:slug`      | No      | Public recruiter profile       |
+| GET    | `/api/uploads/*`           | No      | Serve uploaded files           |
+| GET    | `/api/admin/students`      | Admin   | List all students              |
+| POST   | `/api/admin/students`      | Admin   | Create student                 |
+| GET    | `/api/admin/nfc-cards`     | Admin   | List NFC card inventory        |
+| GET    | `/api/admin/universities`  | Admin   | List universities              |
+| GET    | `/api/admin/analytics`     | Admin   | Platform analytics             |
+| GET    | `/api/admin/storage`       | Admin   | Storage usage from disk        |
+| POST   | `/api/nfc/program`         | Admin   | Program NFC card               |
 
 ## NFC Card Programming
 

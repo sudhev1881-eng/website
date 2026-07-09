@@ -6,6 +6,7 @@ export const profilesRouter = Router();
 function formatResume(row: {
   file_name: string;
   file_size_bytes: number;
+  file_path: string | null;
   version: number;
   uploaded_at: Date;
 } | undefined) {
@@ -16,6 +17,7 @@ function formatResume(row: {
     fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
     uploadedAt: row.uploaded_at.toISOString().split("T")[0],
     version: row.version,
+    downloadUrl: row.file_path ? `/api/uploads/${row.file_path}` : null,
   };
 }
 
@@ -63,7 +65,13 @@ profilesRouter.get("/:slug", async (req, res) => {
       portfolio: s.portfolio,
       email: s.email,
       phone: s.phone,
-      resume: formatResume(resume.rows[0]),
+      resume: formatResume(resume.rows[0] as {
+        file_name: string;
+        file_size_bytes: number;
+        file_path: string | null;
+        version: number;
+        uploaded_at: Date;
+      } | undefined),
       projects: projects.rows.map((p) => ({
         id: p.id,
         title: p.title,

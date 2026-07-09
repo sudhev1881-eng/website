@@ -9,6 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { toast } from "@/components/ui/toast";
 import { ProgramNfcCardDialog } from "./ProgramNfcCardDialog";
 import { api, type AdminStudent } from "@/lib/api";
 
@@ -23,14 +32,44 @@ export function AdminStudents() {
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
   const [programStudent, setProgramStudent] = React.useState<AdminStudent | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [form, setForm] = React.useState({ name: "", email: "", password: "", university: "", major: "" });
+  const [submitting, setSubmitting] = React.useState(false);
 
-  React.useEffect(() => {
+  const loadStudents = React.useCallback(() => {
+    setLoading(true);
     api.admin
       .students()
       .then(setStudents)
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  React.useEffect(() => {
+    loadStudents();
+  }, [loadStudents]);
+
+  const handleAddStudent = async () => {
+    if (!form.name || !form.email || !form.password) return;
+    setSubmitting(true);
+    try {
+      const student = await api.admin.createStudent({
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        university: form.university || undefined,
+        major: form.major || undefined,
+      });
+      setStudents((prev) => [...prev, student].sort((a, b) => a.name.localeCompare(b.name)));
+      setForm({ name: "", email: "", password: "", university: "", major: "" });
+      setAddOpen(false);
+      toast.success("Student created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create student");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const filtered = students.filter(
     (s) =>
@@ -52,7 +91,7 @@ export function AdminStudents() {
       <PageHeader
         title="Students"
         description="Search students and program NFC cards via the server USB reader."
-        actions={<Button>Add Student</Button>}
+        actions={<Button onClick={() => setAddOpen(true)}>Add Student</Button>}
       />
 
       <Card className="shadow-card">
@@ -125,6 +164,31 @@ export function AdminStudents() {
           }}
         />
       ) : null}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Student</DialogTitle>
+            <DialogDescription>Create a new student account.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input placeholder="Full name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+            <Input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            <Input placeholder="Password" type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
+            <Input placeholder="University" value={form.university} onChange={(e) => setForm((f) => ({ ...f, university: e.target.value }))} />
+            <Input placeholder="Major" value={form.major} onChange={(e) => setForm((f) => ({ ...f, major: e.target.value }))} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddStudent}
+              disabled={submitting || !form.name || !form.email || !form.password}
+            >
+              {submitting ? "Creating…" : "Create Student"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -9,6 +9,7 @@ studentsRouter.use(requireAuth, requireStudent);
 function formatResume(row: {
   file_name: string;
   file_size_bytes: number;
+  file_path: string | null;
   version: number;
   uploaded_at: Date;
 } | undefined) {
@@ -19,6 +20,7 @@ function formatResume(row: {
     fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
     uploadedAt: row.uploaded_at.toISOString().split("T")[0],
     version: row.version,
+    downloadUrl: row.file_path ? `/api/uploads/${row.file_path}` : null,
   };
 }
 
@@ -110,7 +112,13 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
         period: e.period,
         description: e.description,
       })),
-      resume: formatResume(resume.rows[0]),
+      resume: formatResume(resume.rows[0] as {
+        file_name: string;
+        file_size_bytes: number;
+        file_path: string | null;
+        version: number;
+        uploaded_at: Date;
+      } | undefined),
       nfcCard: nfc.rows[0]
         ? {
             id: nfc.rows[0].id,
