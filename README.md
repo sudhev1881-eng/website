@@ -96,7 +96,28 @@ Open [http://localhost:3000](http://localhost:3000)
 
 See [docs/NFC_SETUP.md](docs/NFC_SETUP.md) for USB reader setup on Ubuntu.
 
-## NFC Card Programming
+## Troubleshooting
+
+### Admin dashboard empty or “Profile not found”
+
+**Cause:** PostgreSQL is not running. The API starts without it, but admin lists and public profiles need the database.
+
+**Fix:**
+
+```bash
+npm run db:up          # requires Docker
+npm run db:setup       # migrations + demo students
+cd server && npm run dev   # restart API
+```
+
+Check: open [http://localhost:4000/api/health](http://localhost:4000/api/health) — must show `"database": "connected"`.
+
+**No Docker?** Install PostgreSQL locally, create user/db matching `server/.env`, then `npm run db:setup`.
+
+### `npm run dev:api` not found inside `server/`
+
+From `server/` use `npm run dev`. From project root use `npm run dev:api`.
+
 
 Administrators program cards from the **Admin Dashboard in the browser**:
 

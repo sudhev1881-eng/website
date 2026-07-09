@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { ProgramNfcCardDialog } from "./ProgramNfcCardDialog";
-import { api, type AdminStudent } from "@/lib/api";
+import { SetupError, DB_SETUP_STEPS } from "@/components/layout/SetupError";
+import { api, ApiError, type AdminStudent } from "@/lib/api";
 
 const statusVariant: Record<string, "success" | "warning" | "outline"> = {
   active: "success",
@@ -30,6 +31,7 @@ const statusVariant: Record<string, "success" | "warning" | "outline"> = {
 export function AdminStudents() {
   const [students, setStudents] = React.useState<AdminStudent[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
   const [programStudent, setProgramStudent] = React.useState<AdminStudent | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -38,10 +40,13 @@ export function AdminStudents() {
 
   const loadStudents = React.useCallback(() => {
     setLoading(true);
+    setFetchError(null);
     api.admin
       .students()
       .then(setStudents)
-      .catch(console.error)
+      .catch((err) => {
+        setFetchError(err instanceof ApiError ? err.message : "Failed to load students");
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -82,6 +87,15 @@ export function AdminStudents() {
     return (
       <div className="flex justify-center py-16">
         <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="py-8">
+        <SetupError title="Could not load students" steps={DB_SETUP_STEPS} />
+        <p className="mt-4 text-center text-sm text-error">{fetchError}</p>
       </div>
     );
   }
