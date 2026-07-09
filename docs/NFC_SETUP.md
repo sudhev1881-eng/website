@@ -60,10 +60,14 @@ SITE_URL=http://localhost:3000
 NFC_CARD_TIMEOUT_MS=30000
 ```
 
-Restart the API:
+Restart the API (from project root **or** the `server/` folder):
 
 ```bash
+# from project root
 npm run dev:api
+
+# or from server/
+cd server && npm run dev
 ```
 
 On startup you should see:
