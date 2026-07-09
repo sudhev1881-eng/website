@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { Toaster } from "@/components/ui/toast";
-import { site } from "@/data/site";
+import { studentLink } from "@/data/studentlink";
 import "./globals.css";
 
 const inter = Inter({
@@ -12,13 +12,13 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: site.metadata.title,
-  description: site.metadata.description,
+  title: studentLink.metadata.title,
+  description: studentLink.metadata.description,
   openGraph: {
-    title: site.metadata.title,
-    description: site.metadata.description,
+    title: studentLink.metadata.title,
+    description: studentLink.metadata.description,
     type: "website",
-    url: site.metadata.url,
+    url: studentLink.metadata.url,
   },
 };
 
