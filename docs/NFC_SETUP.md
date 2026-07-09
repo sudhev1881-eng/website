@@ -106,7 +106,7 @@ Cards are written with `?src=nfc` on the profile URL. When a recruiter taps the 
 
 | Symptom | Fix |
 |---------|-----|
-| `No reader detected` | Check USB cable, run `pcsc_scan`, restart `pcscd` |
+| `systemctl` / *Host is down* | Environment has no systemd — run `sudo pcscd -f &` manually, or use stub mode |
 | `NFC init error` | Install `libpcsclite-dev`, run `npm install` in `server/` |
 | `Timed out waiting for card` | Place card **after** clicking Program; use NTAG tags |
 | `Verification failed` | Try a different blank NTAG card |

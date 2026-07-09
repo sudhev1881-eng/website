@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
 import { requireAuth, requireStudent, type AuthRequest } from "../middleware/auth.js";
+import { getStudentAnalytics } from "../services/analytics.js";
 
 export const studentsRouter = Router();
 
@@ -54,6 +55,24 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
       ]);
 
     const s = student.rows[0];
+    let analytics = {
+      viewsByDay: [
+        { day: "Sun", views: 0, taps: 0 },
+        { day: "Mon", views: 0, taps: 0 },
+        { day: "Tue", views: 0, taps: 0 },
+        { day: "Wed", views: 0, taps: 0 },
+        { day: "Thu", views: 0, taps: 0 },
+        { day: "Fri", views: 0, taps: 0 },
+        { day: "Sat", views: 0, taps: 0 },
+      ],
+      topReferrers: [] as Array<{ source: string; count: number; percent: number }>,
+      changes: { profileViews: 0, nfcTaps: 0, resumeDownloads: 0 },
+    };
+    try {
+      analytics = await getStudentAnalytics(studentId);
+    } catch {
+      // profile_events table may not exist until migration 002
+    }
 
     res.json({
       profile: {
@@ -76,13 +95,13 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
       },
       stats: {
         profileViews: s.profile_views,
-        profileViewsChange: 12.5,
+        profileViewsChange: analytics.changes.profileViews,
         nfcTaps: s.nfc_taps,
-        nfcTapsChange: 8.2,
+        nfcTapsChange: analytics.changes.nfcTaps,
         resumeDownloads: s.resume_downloads,
-        resumeDownloadsChange: 15.3,
-        recruiterContacts: 12,
-        recruiterContactsChange: -2.1,
+        resumeDownloadsChange: analytics.changes.resumeDownloads,
+        recruiterContacts: 0,
+        recruiterContactsChange: 0,
       },
       projects: projects.rows.map((p) => ({
         id: p.id,
@@ -94,6 +113,7 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
         featured: p.featured,
       })),
       skills: skills.rows.map((sk) => ({
+        id: sk.id,
         name: sk.name,
         level: sk.level,
         category: sk.category,
@@ -131,21 +151,8 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
           }
         : null,
       analytics: {
-        viewsByDay: [
-          { day: "Mon", views: 12, taps: 3 },
-          { day: "Tue", views: 18, taps: 5 },
-          { day: "Wed", views: 24, taps: 8 },
-          { day: "Thu", views: 15, taps: 4 },
-          { day: "Fri", views: 32, taps: 12 },
-          { day: "Sat", views: 8, taps: 2 },
-          { day: "Sun", views: 6, taps: 1 },
-        ],
-        topReferrers: [
-          { source: "NFC Tap", count: s.nfc_taps, percent: 52 },
-          { source: "Direct Link", count: 45, percent: 26 },
-          { source: "LinkedIn", count: 28, percent: 16 },
-          { source: "QR Code", count: 10, percent: 6 },
-        ],
+        viewsByDay: analytics.viewsByDay,
+        topReferrers: analytics.topReferrers,
       },
     });
   } catch (err) {
@@ -253,5 +260,56 @@ studentsRouter.post("/me/certificates", async (req: AuthRequest, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: "Failed to create certificate" });
+  }
+});
+
+/** DELETE /api/students/me/skills/:id */
+studentsRouter.delete("/me/skills/:id", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    await query(`DELETE FROM skills WHERE id = $1 AND student_id = $2`, [req.params.id, studentId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete skill" });
+  }
+});
+
+/** DELETE /api/students/me/certificates/:id */
+studentsRouter.delete("/me/certificates/:id", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    await query(`DELETE FROM certificates WHERE id = $1 AND student_id = $2`, [req.params.id, studentId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete certificate" });
+  }
+});
+
+/** POST /api/students/me/experience */
+studentsRouter.post("/me/experience", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    if (!studentId) { res.status(404).json({ error: "Not found" }); return; }
+
+    const { role, company, period, description } = req.body;
+    const result = await query(
+      `INSERT INTO experience (student_id, role, company, period, description)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [studentId, role, company, period ?? "", description ?? ""],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create experience" });
+  }
+});
+
+/** DELETE /api/students/me/experience/:id */
+studentsRouter.delete("/me/experience/:id", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    await query(`DELETE FROM experience WHERE id = $1 AND student_id = $2`, [req.params.id, studentId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete experience" });
   }
 });

@@ -139,7 +139,7 @@ export interface StudentDashboardData {
     image: string | null;
     featured: boolean;
   }>;
-  skills: Array<{ name: string; level: number; category: string }>;
+  skills: Array<{ id: string; name: string; level: number; category: string }>;
   certificates: Array<{
     id: string;
     name: string;
@@ -309,11 +309,54 @@ export const api = {
 
     uploadCover: (file: File) =>
       uploadRequest<{ coverImageUrl: string }>("/students/me/cover", file),
+
+    createProject: (data: {
+      title: string;
+      description?: string;
+      tech?: string[];
+      url?: string;
+      featured?: boolean;
+    }) =>
+      request("/students/me/projects", { method: "POST", body: JSON.stringify(data) }),
+
+    deleteProject: (id: string) =>
+      request(`/students/me/projects/${id}`, { method: "DELETE" }),
+
+    createSkill: (data: { name: string; level?: number; category?: string }) =>
+      request("/students/me/skills", { method: "POST", body: JSON.stringify(data) }),
+
+    deleteSkill: (id: string) =>
+      request(`/students/me/skills/${id}`, { method: "DELETE" }),
+
+    createCertificate: (data: { name: string; issuer: string; date: string; url?: string }) =>
+      request("/students/me/certificates", { method: "POST", body: JSON.stringify(data) }),
+
+    deleteCertificate: (id: string) =>
+      request(`/students/me/certificates/${id}`, { method: "DELETE" }),
+
+    createExperience: (data: {
+      role: string;
+      company: string;
+      period?: string;
+      description?: string;
+    }) =>
+      request("/students/me/experience", { method: "POST", body: JSON.stringify(data) }),
+
+    deleteExperience: (id: string) =>
+      request(`/students/me/experience/${id}`, { method: "DELETE" }),
   },
 
   profiles: {
-    get: (slug: string) =>
-      request<PublicProfile>(`/profiles/${slug}`, { auth: false }),
+    get: (slug: string, options?: { src?: string; ref?: string }) => {
+      const params = new URLSearchParams();
+      if (options?.src) params.set("src", options.src);
+      if (options?.ref) params.set("ref", options.ref);
+      const qs = params.toString();
+      return request<PublicProfile>(`/profiles/${slug}${qs ? `?${qs}` : ""}`, { auth: false });
+    },
+
+    resumeDownload: (slug: string) =>
+      request<{ downloadUrl: string }>(`/profiles/${slug}/resume`, { auth: false }),
 
     list: () => request<string[]>("/profiles", { auth: false }),
   },

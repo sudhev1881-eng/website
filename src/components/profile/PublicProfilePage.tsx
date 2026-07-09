@@ -5,18 +5,24 @@ import { PublicProfileView } from "@/components/profile/PublicProfileView";
 import { Spinner } from "@/components/ui/spinner";
 import { api, type PublicProfile } from "@/lib/api";
 
-export function PublicProfilePage({ slug }: { slug: string }) {
+export function PublicProfilePage({
+  slug,
+  source,
+}: {
+  slug: string;
+  source?: string;
+}) {
   const [profile, setProfile] = React.useState<PublicProfile | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     api.profiles
-      .get(slug)
+      .get(slug, source === "nfc" ? { src: "nfc" } : undefined)
       .then(setProfile)
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [slug, source]);
 
   if (loading) {
     return (
@@ -35,5 +41,5 @@ export function PublicProfilePage({ slug }: { slug: string }) {
     );
   }
 
-  return <PublicProfileView profile={profile} />;
+  return <PublicProfileView profile={profile} slug={slug} />;
 }

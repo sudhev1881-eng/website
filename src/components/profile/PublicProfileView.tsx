@@ -22,17 +22,37 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ProgressBar } from "@/components/charts/SimpleBarChart";
 import { toast } from "@/components/ui/toast";
 import type { PublicProfile } from "@/lib/api";
+import { api, fileUrl } from "@/lib/api";
 import { fadeInVariants, staggerContainer } from "@/lib/motion";
 
 interface PublicProfileViewProps {
   profile: PublicProfile;
+  slug: string;
 }
 
-export function PublicProfileView({ profile }: PublicProfileViewProps) {
+export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
+  const coverStyle = profile.coverImage
+    ? { backgroundImage: `url(${fileUrl(profile.coverImage)})`, backgroundSize: "cover", backgroundPosition: "center" }
+    : undefined;
+
+  const handleResumeDownload = async () => {
+    try {
+      const { downloadUrl } = await api.profiles.resumeDownload(slug);
+      const url = fileUrl(downloadUrl);
+      if (url) window.open(url, "_blank");
+      else toast.error("Resume not available");
+    } catch {
+      toast.error("Resume download failed");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Cover */}
-      <div className="relative h-36 bg-gradient-to-br from-primary via-secondary to-accent sm:h-48">
+      <div
+        className="relative h-36 bg-gradient-to-br from-primary via-secondary to-accent sm:h-48"
+        style={coverStyle}
+      >
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImciIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggIGQ9Ik0zMCAwTDYwIDMwTDMwIDYwTDAgMzBaIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LDI1NSwyNTUsMC4wNSkiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IGZpbGw9InVybCgjZykiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L3N2Zz4=')] opacity-50" />
       </div>
 
@@ -45,7 +65,7 @@ export function PublicProfileView({ profile }: PublicProfileViewProps) {
         {/* Profile Header */}
         <motion.div variants={fadeInVariants} className="-mt-16 sm:-mt-20">
           <div className="flex flex-col items-center text-center sm:items-start sm:text-left">
-            <Avatar name={profile.name} size="xl" className="border-4 border-background shadow-card" />
+            <Avatar name={profile.name} size="xl" src={fileUrl(profile.avatar)} className="border-4 border-background shadow-card" />
             <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">{profile.name}</h1>
             <p className="mt-1 text-lg text-primary font-medium">{profile.title}</p>
             <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
@@ -59,7 +79,8 @@ export function PublicProfileView({ profile }: PublicProfileViewProps) {
             <Button
               size="lg"
               className="w-full sm:flex-1"
-              onClick={() => toast.success("Resume download started")}
+              onClick={handleResumeDownload}
+              disabled={!profile.resume}
             >
               <Download className="h-5 w-5" />
               Download Resume

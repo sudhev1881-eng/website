@@ -10,34 +10,43 @@ services:
       - "5432:5432"
     volumes:
       - studentlink_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studentlink"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  # Node.js API — uncomment when deploying with Docker
-  # api:
-  #   build: ./server
-  #   restart: unless-stopped
-  #   ports:
-  #     - "4000:4000"
-  #   environment:
-  #     DATABASE_URL: postgresql://studentlink:studentlink@postgres:5432/studentlink
-  #     SITE_URL: http://studentlink.local
-  #     NFC_READER_ENABLED: "true"
-  #     CORS_ORIGIN: http://studentlink.local
-  #   devices:
-  #     - /dev/bus/usb:/dev/bus/usb  # USB NFC reader passthrough
-  #   depends_on:
-  #     - postgres
+  api:
+    build: ./server
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://studentlink:studentlink@postgres:5432/studentlink
+      JWT_SECRET: change-me-in-production
+      SITE_URL: http://localhost:3000
+      CORS_ORIGIN: http://localhost:3000
+      NFC_READER_ENABLED: "false"
+      STORAGE_PATH: /var/studentlink/uploads
+    volumes:
+      - studentlink_uploads:/var/studentlink/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
 
-  # Next.js frontend — uncomment when deploying with Docker
-  # web:
-  #   build: .
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NEXT_PUBLIC_API_URL: http://studentlink.local:4000/api
-  #     NEXT_PUBLIC_SITE_URL: http://studentlink.local
-  #   depends_on:
-  #     - api
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    depends_on:
+      - api
 
 volumes:
   studentlink_pgdata:
+  studentlink_uploads:

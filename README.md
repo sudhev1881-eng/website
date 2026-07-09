@@ -39,6 +39,17 @@ npm run db:up          # starts PostgreSQL via Docker
 npm run db:setup       # runs migrations + seeds demo data
 ```
 
+### Docker (full stack)
+
+```bash
+docker compose up -d postgres
+docker compose run --rm api npx tsx db/migrate.ts
+docker compose run --rm api npx tsx db/seed.ts
+docker compose up -d api web
+```
+
+Open [http://localhost:3000](http://localhost:3000) — API at [http://localhost:4000](http://localhost:4000).
+
 ### 2. Backend API (port 4000)
 
 ```bash

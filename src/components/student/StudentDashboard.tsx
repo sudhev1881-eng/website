@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Sparkles,
   Award,
+  Briefcase,
   BarChart3,
   Nfc,
   Settings,
@@ -23,6 +24,7 @@ import { StudentResume } from "./StudentResume";
 import { StudentProjects } from "./StudentProjects";
 import { StudentSkills } from "./StudentSkills";
 import { StudentCertificates } from "./StudentCertificates";
+import { StudentExperience } from "./StudentExperience";
 import { StudentAnalytics } from "./StudentAnalytics";
 import { StudentNfc } from "./StudentNfc";
 import { StudentSettings } from "./StudentSettings";
@@ -34,6 +36,7 @@ const navItems = [
   { id: "projects", label: "Projects", icon: FolderOpen },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "certificates", label: "Certificates", icon: Award },
+  { id: "experience", label: "Experience", icon: Briefcase },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "nfc", label: "NFC Card", icon: Nfc },
   { id: "settings", label: "Settings", icon: Settings },
@@ -50,6 +53,7 @@ function StudentDashboardInner() {
     projects: <StudentProjects />,
     skills: <StudentSkills />,
     certificates: <StudentCertificates />,
+    experience: <StudentExperience />,
     analytics: <StudentAnalytics />,
     nfc: <StudentNfc />,
     settings: <StudentSettings />,
