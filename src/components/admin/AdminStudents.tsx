@@ -1,12 +1,14 @@
 "use client";
 
-import { Search, MoreHorizontal } from "lucide-react";
+import * as React from "react";
+import { Search, Nfc } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
+import { ProgramNfcCardDialog } from "./ProgramNfcCardDialog";
 import { adminStudents } from "@/data/mock-admin";
 
 const statusVariant = {
@@ -15,12 +17,28 @@ const statusVariant = {
   inactive: "outline" as const,
 };
 
+function slugFromStudent(student: (typeof adminStudents)[0]): string {
+  return student.name.toLowerCase().replace(/\s+/g, "-");
+}
+
 export function AdminStudents() {
+  const [search, setSearch] = React.useState("");
+  const [programStudent, setProgramStudent] = React.useState<
+    (typeof adminStudents)[0] | null
+  >(null);
+
+  const filtered = adminStudents.filter(
+    (s) =>
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      s.email.toLowerCase().includes(search.toLowerCase()) ||
+      s.university.toLowerCase().includes(search.toLowerCase()),
+  );
+
   return (
     <div>
       <PageHeader
         title="Students"
-        description="Manage all registered students across universities."
+        description="Search students and program NFC cards via the server USB reader."
         actions={<Button>Add Student</Button>}
       />
 
@@ -28,7 +46,12 @@ export function AdminStudents() {
         <div className="border-b border-border p-4">
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search students..." className="pl-10" />
+            <Input
+              placeholder="Search students..."
+              className="pl-10"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
         </div>
         <CardContent className="p-0">
@@ -40,13 +63,16 @@ export function AdminStudents() {
                   <th className="hidden px-4 py-3 font-medium md:table-cell">University</th>
                   <th className="hidden px-4 py-3 font-medium lg:table-cell">Major</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="hidden px-4 py-3 font-medium sm:table-cell">Views</th>
-                  <th className="px-4 py-3 font-medium" />
+                  <th className="hidden px-4 py-3 font-medium sm:table-cell">NFC Card</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {adminStudents.map((student) => (
-                  <tr key={student.id} className="border-b border-border last:border-0 hover:bg-surface/50">
+                {filtered.map((student) => (
+                  <tr
+                    key={student.id}
+                    className="border-b border-border last:border-0 hover:bg-surface/50"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar name={student.name} size="sm" />
@@ -56,15 +82,29 @@ export function AdminStudents() {
                         </div>
                       </div>
                     </td>
-                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">{student.university}</td>
-                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">{student.major}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={statusVariant[student.status]}>{student.status}</Badge>
+                    <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">
+                      {student.university}
                     </td>
-                    <td className="hidden px-4 py-3 sm:table-cell">{student.profileViews}</td>
+                    <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
+                      {student.major}
+                    </td>
                     <td className="px-4 py-3">
-                      <Button variant="ghost" size="sm" aria-label="More options">
-                        <MoreHorizontal className="h-4 w-4" />
+                      <Badge variant={statusVariant[student.status]}>
+                        {student.status}
+                      </Badge>
+                    </td>
+                    <td className="hidden px-4 py-3 font-mono text-xs sm:table-cell">
+                      {student.nfcCard ?? "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setProgramStudent(student)}
+                      >
+                        <Nfc className="h-4 w-4" />
+                        <span className="hidden sm:inline">Program NFC Card</span>
+                        <span className="sm:hidden">Program</span>
                       </Button>
                     </td>
                   </tr>
@@ -74,6 +114,19 @@ export function AdminStudents() {
           </div>
         </CardContent>
       </Card>
+
+      {programStudent ? (
+        <ProgramNfcCardDialog
+          open={Boolean(programStudent)}
+          onOpenChange={(open) => !open && setProgramStudent(null)}
+          student={{
+            id: programStudent.id,
+            name: programStudent.name,
+            slug: slugFromStudent(programStudent),
+            cardNumber: programStudent.nfcCard,
+          }}
+        />
+      ) : null}
     </div>
   );
 }

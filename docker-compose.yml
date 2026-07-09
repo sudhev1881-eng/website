@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: studentlink
+      POSTGRES_PASSWORD: studentlink
+      POSTGRES_DB: studentlink
+    ports:
+      - "5432:5432"
+    volumes:
+      - studentlink_pgdata:/var/lib/postgresql/data
+
+  # Node.js API — uncomment when deploying with Docker
+  # api:
+  #   build: ./server
+  #   restart: unless-stopped
+  #   ports:
+  #     - "4000:4000"
+  #   environment:
+  #     DATABASE_URL: postgresql://studentlink:studentlink@postgres:5432/studentlink
+  #     SITE_URL: http://studentlink.local
+  #     NFC_READER_ENABLED: "true"
+  #     CORS_ORIGIN: http://studentlink.local
+  #   devices:
+  #     - /dev/bus/usb:/dev/bus/usb  # USB NFC reader passthrough
+  #   depends_on:
+  #     - postgres
+
+  # Next.js frontend — uncomment when deploying with Docker
+  # web:
+  #   build: .
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NEXT_PUBLIC_API_URL: http://studentlink.local:4000/api
+  #     NEXT_PUBLIC_SITE_URL: http://studentlink.local
+  #   depends_on:
+  #     - api
+
+volumes:
+  studentlink_pgdata:

@@ -49,7 +49,7 @@ export function AdminDashboard() {
       navItems={navItems}
       activeId={activeId}
       onNavigate={setActiveId}
-      user={{ name: "Admin User", role: "Platform Admin" }}
+      user={{ name: "Admin User", role: "Web Admin" }}
     >
       {modules[activeId] ?? modules.dashboard}
     </DashboardShell>

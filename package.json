@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:api": "npm run dev --prefix server",
     "build": "next build",
+    "build:api": "npm run build --prefix server",
     "start": "next start",
     "lint": "eslint"
   },

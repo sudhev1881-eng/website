@@ -18,7 +18,7 @@ export function AdminNfcCards() {
     <div>
       <PageHeader
         title="NFC Cards"
-        description="Manage NFC card inventory and assignments."
+        description="Card inventory on the server. Program cards from the Students module — the browser calls the API, and the API writes via the USB reader on the Ubuntu server."
         actions={
           <Button>
             <Plus className="h-4 w-4" />

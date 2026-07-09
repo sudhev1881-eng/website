@@ -9,7 +9,7 @@ import { adminStorage } from "@/data/mock-admin";
 
 const typeIcons: Record<string, ReactNode> = {
   Resumes: <FileText className="h-4 w-4" />,
-  "Profile Images": <Image className="h-4 w-4" />,
+  "Profile Images": <ImageIcon className="h-4 w-4" />,
   "Project Assets": <FolderOpen className="h-4 w-4" />,
 };
 

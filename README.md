@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# StudentLink
 
-## Getting Started
+A **web-only** platform for student digital profiles and NFC card management. Students build portfolios, administrators program NFC cards, and recruiters view profiles by tapping a card — all through a browser.
 
-First, run the development server:
+> **StudentLink is not a desktop application.** There is no Electron app. Administrators use Chrome (or any browser) at `/admin` on the same website.
+
+## Architecture
+
+Single-server deployment (Ubuntu PC initially, cloud later):
+
+| Component        | Technology   | Port  |
+|------------------|-------------|-------|
+| Frontend         | Next.js     | 3000  |
+| REST API         | Node.js     | 4000  |
+| Database         | PostgreSQL  | 5432  |
+| File storage     | Local disk  | —     |
+| NFC reader       | USB → API   | —     |
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full system design, NFC workflow, and cloud migration guide.
+
+## Routes (browser only)
+
+| URL            | Audience    |
+|----------------|-------------|
+| `/`            | Public      |
+| `/login`       | Auth        |
+| `/student`     | Students    |
+| `/admin`       | Admins      |
+| `/u/{slug}`    | Recruiters  |
+
+## Quick Start (development)
+
+### 1. Frontend
 
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Backend API
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd server
+npm install
+cp .env.example .env
+npm run dev
+```
 
-## Learn More
+API runs at [http://localhost:4000](http://localhost:4000)
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Database (optional, via Docker)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+docker compose up -d postgres
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## NFC Card Programming
 
-## Deploy on Vercel
+Administrators program cards from the **Admin Dashboard in the browser**:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Go to `/admin` → Students
+2. Search for a student
+3. Click **Program NFC Card**
+4. Place card on the USB reader connected to the **server**
+5. Backend writes the profile URL; browser shows success
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The browser never touches the NFC hardware — only the server-side API does.
+
+## Environment Variables
+
+Copy `.env.example` to `.env.local` (frontend) and `server/.env.example` to `server/.env` (API).
+
+Key variable:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:4000/api
+```
+
+Change this when deploying to `http://studentlink.local:4000/api` or `https://api.studentlink.com/api` — no frontend code changes required.
+
+## Project Structure
+
+```
+src/           Next.js frontend (web UI)
+server/        Node.js REST API + NFC service
+docs/          Architecture documentation
+```
