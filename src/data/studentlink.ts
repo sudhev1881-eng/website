@@ -12,7 +12,6 @@ export const studentLink = {
   nav: [
     { label: "How It Works", href: "#how-it-works" },
     { label: "Features", href: "#features" },
-    { label: "Universities", href: "#universities" },
     { label: "FAQ", href: "#faq" },
   ],
   cta: {
@@ -76,15 +75,6 @@ export const howItWorks = [
     title: "Tap & Connect",
     description: "Recruiters tap your card at career fairs and view your full profile instantly.",
   },
-];
-
-export const universities = [
-  { name: "Stanford University", students: 1240, logo: "SU" },
-  { name: "MIT", students: 980, logo: "MIT" },
-  { name: "UC Berkeley", students: 1560, logo: "UCB" },
-  { name: "Georgia Tech", students: 890, logo: "GT" },
-  { name: "University of Michigan", students: 1120, logo: "UM" },
-  { name: "Carnegie Mellon", students: 760, logo: "CMU" },
 ];
 
 export const faqs = [

@@ -20,7 +20,6 @@ import {
   studentLink,
   landingFeatures,
   howItWorks,
-  universities,
   faqs,
 } from "@/data/studentlink";
 import { fadeInVariants, staggerContainer } from "@/lib/motion";
@@ -157,29 +156,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Universities */}
-      <section id="universities" className="border-t border-border bg-surface/30 px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight">Trusted by top universities</h2>
-            <p className="mt-3 text-muted-foreground">Partner institutions across the country</p>
-          </div>
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {universities.map((uni) => (
-              <div key={uni.name} className="flex items-center gap-4 rounded-2xl border border-border bg-background p-5 shadow-card">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary/10 text-sm font-bold text-secondary">
-                  {uni.logo}
-                </div>
-                <div>
-                  <p className="font-semibold">{uni.name}</p>
-                  <p className="text-sm text-muted-foreground">{uni.students.toLocaleString()} students</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* FAQ */}
       <section id="faq" className="px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl">
@@ -215,7 +191,7 @@ export function LandingPage() {
         logo={<StudentLinkLogo />}
         description={studentLink.description}
         groups={[
-          { title: "Product", links: [{ label: "Features", href: "#features" }, { label: "Universities", href: "#universities" }] },
+          { title: "Product", links: [{ label: "Features", href: "#features" }] },
           { title: "Company", links: [{ label: "About", href: "#" }, { label: "Blog", href: "#" }, { label: "Careers", href: "#" }] },
           { title: "Support", links: [{ label: "Help Center", href: "#" }, { label: "Contact", href: "#contact" }, { label: "Privacy", href: "#" }] },
         ]}
