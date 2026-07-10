@@ -109,27 +109,3 @@ export const faqs = [
       "We partner with universities worldwide. Check with your career services office or sign up individually to get started right away.",
   },
 ];
-
-export const testimonials = [
-  {
-    quote:
-      "I landed three interviews after one career fair. Recruiters loved tapping my card instead of collecting paper resumes.",
-    author: "Sarah Chen",
-    role: "Computer Science, Stanford '25",
-    avatar: "SC",
-  },
-  {
-    quote:
-      "StudentLink transformed how our students present themselves. The admin dashboard makes managing 1,200+ profiles effortless.",
-    author: "Dr. James Wright",
-    role: "Director of Career Services, MIT",
-    avatar: "JW",
-  },
-  {
-    quote:
-      "The profile loads in under a second on mobile. Perfect for recruiters who want quick access to skills and GitHub links.",
-    author: "Marcus Rivera",
-    role: "Tech Recruiter, Stripe",
-    avatar: "MR",
-  },
-];

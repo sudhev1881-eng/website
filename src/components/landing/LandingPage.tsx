@@ -10,7 +10,6 @@ import {
   FolderOpen,
   ChevronDown,
   ArrowRight,
-  Star,
 } from "lucide-react";
 import { Navbar, Footer } from "@/components/ui";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,6 @@ import {
   howItWorks,
   universities,
   faqs,
-  testimonials,
 } from "@/data/studentlink";
 import { fadeInVariants, staggerContainer } from "@/lib/motion";
 
@@ -177,38 +175,6 @@ export function LandingPage() {
                   <p className="text-sm text-muted-foreground">{uni.students.toLocaleString()} students</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Testimonials */}
-      <section className="border-t border-border bg-surface/30 px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight">Loved by students & recruiters</h2>
-          </div>
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {testimonials.map((t) => (
-              <Card key={t.author} className="shadow-card">
-                <CardContent className="p-6">
-                  <div className="mb-4 flex gap-0.5">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-warning text-warning" />
-                    ))}
-                  </div>
-                  <p className="text-sm leading-relaxed text-foreground">&ldquo;{t.quote}&rdquo;</p>
-                  <div className="mt-4 flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                      {t.avatar}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold">{t.author}</p>
-                      <p className="text-xs text-muted-foreground">{t.role}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             ))}
           </div>
         </div>
