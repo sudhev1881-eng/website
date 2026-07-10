@@ -459,6 +459,58 @@ authRouter.post("/supabase/claim", async (req, res) => {
   }
 });
 
+/** POST /api/auth/change-password */
+authRouter.post("/change-password", requireAuth, async (req: AuthRequest, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: "currentPassword and newPassword are required" });
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    res.status(400).json({ error: "New password must be at least 6 characters" });
+    return;
+  }
+
+  try {
+    const userResult = await query<{ password_hash: string | null; auth_provider: string }>(
+      `SELECT password_hash, auth_provider FROM users WHERE id = $1`,
+      [req.user!.userId],
+    );
+
+    if (!userResult.rowCount) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const user = userResult.rows[0];
+    if (!user.password_hash || user.auth_provider === "supabase") {
+      res.status(400).json({
+        error: "Password change is not available for Google sign-in accounts. Manage your password in Google.",
+      });
+      return;
+    }
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!valid) {
+      res.status(401).json({ error: "Current password is incorrect" });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
+      passwordHash,
+      req.user!.userId,
+    ]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Change password error:", err);
+    res.status(500).json({ error: "Failed to change password" });
+  }
+});
+
 /** GET /api/auth/me */
 authRouter.get("/me", requireAuth, async (req: AuthRequest, res) => {
   try {

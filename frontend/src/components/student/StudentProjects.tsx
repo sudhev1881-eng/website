@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { FolderOpen, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { FolderOpen, ExternalLink, Plus, Trash2, ImageIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -18,12 +19,13 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { useStudentData } from "@/providers/student-data-provider";
-import { api } from "@/lib/api";
+import { api, fileUrl } from "@/lib/api";
 
 export function StudentProjects() {
   const { data, refresh } = useStudentData();
   const [open, setOpen] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [uploadingId, setUploadingId] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({ title: "", description: "", tech: "", url: "", featured: false });
 
   if (!data) return null;
@@ -61,6 +63,19 @@ export function StudentProjects() {
     }
   };
 
+  const handleImageUpload = async (projectId: string, file: File) => {
+    setUploadingId(projectId);
+    try {
+      await api.students.uploadProjectImage(projectId, file);
+      toast.success("Project image uploaded");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -83,35 +98,69 @@ export function StudentProjects() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {studentProjects.map((project) => (
-            <Card key={project.id} hover className="shadow-card">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-base">{project.title}</CardTitle>
-                  <div className="flex items-center gap-1">
-                    {project.featured ? <Badge variant="primary">Featured</Badge> : null}
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(project.id)} aria-label="Delete project">
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
+          {studentProjects.map((project) => {
+            const imageSrc = fileUrl(project.image);
+            return (
+              <Card key={project.id} hover className="shadow-card overflow-hidden">
+                {imageSrc ? (
+                  <div
+                    className="h-36 bg-cover bg-center"
+                    style={{ backgroundImage: `url(${imageSrc})` }}
+                  />
+                ) : (
+                  <div className="flex h-36 items-center justify-center bg-surface text-muted-foreground">
+                    <ImageIcon className="h-8 w-8 opacity-40" />
                   </div>
-                </div>
-                <CardDescription>{project.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4 flex flex-wrap gap-1.5">
-                  {project.tech.map((t) => (
-                    <Badge key={t} variant="outline">{t}</Badge>
-                  ))}
-                </div>
-                {project.url ? (
-                  <Button variant="outline" size="sm" href={project.url}>
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    View Project
-                  </Button>
-                ) : null}
-              </CardContent>
-            </Card>
-          ))}
+                )}
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-base">{project.title}</CardTitle>
+                    <div className="flex items-center gap-1">
+                      {project.featured ? <Badge variant="primary">Featured</Badge> : null}
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(project.id)} aria-label="Delete project">
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                  <CardDescription>{project.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-4 flex flex-wrap gap-1.5">
+                    {project.tech.map((t) => (
+                      <Badge key={t} variant="outline">{t}</Badge>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      disabled={uploadingId === project.id}
+                      onClick={() => {
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = "image/*";
+                        input.onchange = () => {
+                          const file = input.files?.[0];
+                          if (file) void handleImageUpload(project.id, file);
+                        };
+                        input.click();
+                      }}
+                    >
+                      {uploadingId === project.id ? <Spinner size="sm" /> : <ImageIcon className="h-3.5 w-3.5" />}
+                      {imageSrc ? "Change image" : "Add image"}
+                    </Button>
+                    {project.url ? (
+                      <Button variant="outline" size="sm" href={project.url}>
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        View
+                      </Button>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

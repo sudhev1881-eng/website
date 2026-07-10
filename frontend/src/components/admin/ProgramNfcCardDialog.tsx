@@ -86,9 +86,7 @@ export function ProgramNfcCardDialog({
       }
     } catch (err) {
       setErrorMessage(
-        err instanceof Error
-          ? err.message
-          : "Failed to reach the server. Is the API running on the Ubuntu server?",
+        err instanceof Error ? err.message : "Failed to register NFC profile URL.",
       );
       setStep("error");
     }
@@ -103,8 +101,7 @@ export function ProgramNfcCardDialog({
             Program NFC Card
           </DialogTitle>
           <DialogDescription>
-            Programming card for <strong>{student.name}</strong>. Place a blank
-            NTAG card on the NFC reader connected to the <strong>server</strong>.
+            Register the profile URL for <strong>{student.name}</strong>. Use the URL on physical NFC tags or QR codes.
           </DialogDescription>
         </DialogHeader>
 
@@ -114,8 +111,8 @@ export function ProgramNfcCardDialog({
               <Usb className="h-4 w-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant={readerStatus.connected ? "success" : "warning"}>
-                    {readerStatus.mode === "stub" ? "Stub mode" : readerStatus.connected ? "Reader connected" : "No reader"}
+                  <Badge variant={readerStatus.connected ? "success" : "primary"}>
+                    {readerStatus.mode === "cloud" ? "Cloud mode" : readerStatus.mode === "stub" ? "Stub mode" : readerStatus.connected ? "Reader connected" : "No reader"}
                   </Badge>
                   {readerStatus.readerName ? (
                     <span className="truncate text-xs text-muted-foreground">{readerStatus.readerName}</span>

@@ -1,91 +1,109 @@
 "use client";
 
+import * as React from "react";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from "@/components/ui/toast";
+import { Spinner } from "@/components/ui/spinner";
 import { useStudentData } from "@/providers/student-data-provider";
+import { useAuth } from "@/providers/auth-provider";
+import { toast } from "@/components/ui/toast";
+import { api } from "@/lib/api";
+import { clearToken } from "@/lib/auth-token";
 
 export function StudentSettings() {
+  const router = useRouter();
+  const { logout } = useAuth();
   const { data } = useStudentData();
+  const [currentPassword, setCurrentPassword] = React.useState("");
+  const [newPassword, setNewPassword] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+
   if (!data) return null;
-  const currentStudent = data.profile;
+
+  const handlePasswordChange = async () => {
+    if (!currentPassword || !newPassword) {
+      toast.error("Enter current and new password");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.auth.changePassword({ currentPassword, newPassword });
+      setCurrentPassword("");
+      setNewPassword("");
+      toast.success("Password updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to change password");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!confirm("Delete your account and all profile data? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await api.students.deleteAccount();
+      clearToken();
+      logout();
+      toast.success("Account deleted");
+      router.push("/");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete account");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div>
-      <PageHeader
-        title="Settings"
-        description="Manage your account preferences."
-        actions={<Button onClick={() => toast.success("Settings saved")}>Save Changes</Button>}
-      />
+      <PageHeader title="Settings" description="Manage your account." />
 
       <div className="space-y-6">
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>Account</CardTitle>
-            <CardDescription>Update your login credentials.</CardDescription>
+            <CardDescription>
+              Signed in as {data.profile.email}. Google accounts manage passwords through Google.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:max-w-md">
-            <Input label="Email" type="email" defaultValue={currentStudent.email} />
-            <Input label="Current Password" type="password" placeholder="••••••••" />
-            <Input label="New Password" type="password" placeholder="••••••••" />
+            <Input label="Email" type="email" value={data.profile.email} disabled />
+            <Input
+              label="Current Password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            <Input
+              label="New Password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="••••••••"
+            />
+            <Button onClick={handlePasswordChange} disabled={saving}>
+              {saving ? "Updating…" : "Update Password"}
+            </Button>
           </CardContent>
         </Card>
 
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>Profile URL</CardTitle>
-            <CardDescription>Customize your public profile link.</CardDescription>
+            <CardDescription>Your public profile is always available at this link.</CardDescription>
           </CardHeader>
           <CardContent className="sm:max-w-md">
-            <div className="flex items-end gap-2">
-              <Input
-                label="Username"
-                defaultValue={currentStudent.username}
-                helperText="studentlink.app/u/"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle>Preferences</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:max-w-md">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Profile Visibility</label>
-              <Select defaultValue="public">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="public">Public</SelectItem>
-                  <SelectItem value="unlisted">Unlisted</SelectItem>
-                  <SelectItem value="private">Private</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Email Notifications</label>
-              <Select defaultValue="all">
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All notifications</SelectItem>
-                  <SelectItem value="important">Important only</SelectItem>
-                  <SelectItem value="none">None</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Input
+              label="Username"
+              value={data.profile.username}
+              disabled
+              helperText={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/u/${data.profile.username}`}
+            />
           </CardContent>
         </Card>
 
@@ -95,7 +113,9 @@ export function StudentSettings() {
             <CardDescription>Permanently delete your account and all data.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="destructive">Delete Account</Button>
+            <Button variant="destructive" onClick={handleDeleteAccount} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete Account"}
+            </Button>
           </CardContent>
         </Card>
       </div>

@@ -1,137 +1,101 @@
 "use client";
 
 import * as React from "react";
-import { Usb, RefreshCw } from "lucide-react";
+import { Cloud, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { toast } from "@/components/ui/toast";
 import { api, type NfcReaderStatus } from "@/lib/api";
 
 export function AdminSettings() {
   const [readerStatus, setReaderStatus] = React.useState<NfcReaderStatus | null>(null);
+  const [health, setHealth] = React.useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = React.useState(true);
 
-  const refreshReaderStatus = React.useCallback(() => {
+  const refresh = React.useCallback(() => {
     setLoadingStatus(true);
-    api.nfc
-      .status()
-      .then(setReaderStatus)
-      .catch(() =>
-        setReaderStatus({
-          connected: false,
-          readerName: null,
-          mode: "stub",
-          message: "Could not reach NFC status endpoint",
-        }),
-      )
+    Promise.all([
+      api.nfc.status().catch(() => ({
+        connected: false,
+        readerName: null,
+        mode: "cloud" as const,
+        message: "Could not reach NFC status endpoint",
+      })),
+      api.health().then((h) => h.status).catch(() => "unreachable"),
+    ])
+      .then(([nfc, h]) => {
+        setReaderStatus(nfc);
+        setHealth(h);
+      })
       .finally(() => setLoadingStatus(false));
   }, []);
 
   React.useEffect(() => {
-    refreshReaderStatus();
-  }, [refreshReaderStatus]);
+    refresh();
+  }, [refresh]);
 
   return (
     <div>
-      <PageHeader
-        title="Settings"
-        description="Platform configuration and admin preferences."
-        actions={<Button onClick={() => toast.success("Settings saved")}>Save Changes</Button>}
-      />
+      <PageHeader title="Settings" description="Platform status and cloud configuration." />
 
       <div className="space-y-6">
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Usb className="h-5 w-5" />
-              NFC Reader (Server USB)
+              <Cloud className="h-5 w-5" />
+              API Health
+            </CardTitle>
+            <CardDescription>Backend status on Oracle Cloud.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loadingStatus ? (
+              <Spinner />
+            ) : (
+              <Badge variant={health === "ok" ? "success" : "warning"}>
+                {health === "ok" ? "API healthy" : `API ${health ?? "unknown"}`}
+              </Badge>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cloud className="h-5 w-5" />
+              NFC (Cloud Mode)
             </CardTitle>
             <CardDescription>
-              Live status from the API on the Ubuntu server. The reader must be plugged into the server, not your browser machine.
+              Profile URLs are registered in the database. Physical NFC tags are programmed externally with the generated URL.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {loadingStatus ? (
-              <div className="flex justify-center py-6">
-                <Spinner />
-              </div>
+              <div className="flex justify-center py-6"><Spinner /></div>
             ) : readerStatus ? (
               <div className="rounded-xl border border-border bg-surface p-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={readerStatus.connected ? "success" : "warning"}>
-                    {readerStatus.mode === "stub" ? "Stub mode" : readerStatus.connected ? "Connected" : "Disconnected"}
-                  </Badge>
-                  {readerStatus.readerName ? (
-                    <span className="text-sm font-medium">{readerStatus.readerName}</span>
-                  ) : null}
-                </div>
+                <Badge variant="primary">{readerStatus.mode === "cloud" ? "Cloud mode" : readerStatus.mode}</Badge>
                 <p className="mt-2 text-sm text-muted-foreground">{readerStatus.message}</p>
-                {readerStatus.mode === "stub" ? (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Set <code>NFC_READER_ENABLED=true</code> in <code>server/.env</code> and restart the API after installing pcscd.
-                  </p>
-                ) : null}
               </div>
             ) : null}
-            <Button variant="outline" size="sm" onClick={refreshReaderStatus}>
+            <Button variant="outline" size="sm" onClick={refresh}>
               <RefreshCw className="h-4 w-4" />
-              Refresh Reader Status
+              Refresh Status
             </Button>
           </CardContent>
         </Card>
 
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Platform</CardTitle>
-            <CardDescription>General platform settings.</CardDescription>
+            <CardTitle>Environment</CardTitle>
+            <CardDescription>Configure via deployment environment variables (Vercel, Oracle, Supabase).</CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:max-w-md">
-            <Input label="Platform Name" defaultValue="StudentLink" />
-            <Input label="Support Email" defaultValue="support@studentlink.app" />
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Default Plan</label>
-              <Select defaultValue="student">
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="student">Student (Free)</SelectItem>
-                  <SelectItem value="pro">Pro</SelectItem>
-                  <SelectItem value="university">University</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle>NFC Cards</CardTitle>
-            <CardDescription>Card issuance and management settings.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:max-w-md">
-            <Input label="Card Prefix" defaultValue="SL" />
-            <Input label="Max Cards per Student" type="number" defaultValue="2" />
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle>Storage Limits</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:max-w-md">
-            <Input label="Resume Max Size (MB)" type="number" defaultValue="10" />
-            <Input label="Image Max Size (MB)" type="number" defaultValue="5" />
-            <Input label="Total Storage (GB)" type="number" defaultValue="100" />
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <p>Frontend: Vercel — <code>NEXT_PUBLIC_*</code> variables</p>
+            <p>API: Oracle Cloud Docker — <code>backend/.env</code></p>
+            <p>Database &amp; storage: Supabase project dashboard</p>
+            <p>See <code>docs/DEPLOYMENT.md</code> for the full checklist.</p>
           </CardContent>
         </Card>
       </div>

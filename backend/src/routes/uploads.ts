@@ -232,3 +232,59 @@ uploadsRouter.post(
   },
 );
 
+/** POST /api/students/me/projects/:projectId/image */
+uploadsRouter.post(
+  "/me/projects/:projectId/image",
+  requireAuth,
+  requireStudent,
+  (req, res, next) => {
+    imageUpload.single("file")(req, res, (err) => {
+      if (err) {
+        handleMulterError(err, res);
+        return;
+      }
+      next();
+    });
+  },
+  async (req: AuthRequest, res) => {
+    try {
+      const studentId = await getStudentId(req);
+      if (!studentId) {
+        res.status(404).json({ error: "Student profile not found" });
+        return;
+      }
+
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+
+      const project = await query<{ id: string; image_url: string | null }>(
+        `SELECT id, image_url FROM projects WHERE id = $1 AND student_id = $2`,
+        [req.params.projectId, studentId],
+      );
+
+      if (!project.rowCount) {
+        res.status(404).json({ error: "Project not found" });
+        return;
+      }
+
+      const oldUrl = project.rows[0].image_url;
+      if (oldUrl) await deleteFile(extractStoragePath(oldUrl));
+
+      const saved = await saveFile("projects", studentId, file.originalname, file.buffer);
+
+      await query(`UPDATE projects SET image_url = $2 WHERE id = $1`, [
+        req.params.projectId,
+        saved.publicUrl,
+      ]);
+
+      res.json({ imageUrl: saved.publicUrl });
+    } catch (err) {
+      console.error("POST /students/me/projects/:id/image error:", err);
+      res.status(500).json({ error: "Failed to upload project image" });
+    }
+  },
+);
+

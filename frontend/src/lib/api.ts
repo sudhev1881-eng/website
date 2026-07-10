@@ -216,7 +216,7 @@ export interface AdminStudent {
   id: string;
   name: string;
   username: string;
-  email: string;
+  email: string | null;
   university: string;
   major: string;
   status: string;
@@ -272,7 +272,7 @@ export interface NfcReaderStatus {
   connected: boolean;
   readerName: string | null;
   message: string;
-  mode: "stub" | "hardware";
+  mode: "cloud" | "stub" | "hardware";
 }
 
 export interface NfcProgramResult {
@@ -306,6 +306,12 @@ export const api = {
       }),
 
     me: () => request<{ user: AuthUser; student: { id: string; username: string; name: string } | null }>("/auth/me"),
+
+    changePassword: (data: { currentPassword: string; newPassword: string }) =>
+      request<{ success: boolean }>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
 
     google: (credential: string) =>
       request<GoogleAuthResponse>("/auth/google", {
@@ -356,6 +362,22 @@ export const api = {
 
     uploadCover: (file: File) =>
       uploadRequest<{ coverImageUrl: string }>("/students/me/cover", file),
+
+    uploadProjectImage: (projectId: string, file: File) =>
+      uploadRequest<{ imageUrl: string }>(`/students/me/projects/${projectId}/image`, file),
+
+    deactivateNfc: () =>
+      request<{ success: boolean; message: string }>("/students/me/nfc/deactivate", {
+        method: "PATCH",
+      }),
+
+    requestNfcReplacement: () =>
+      request<{ success: boolean; message: string }>("/students/me/nfc/replacement-request", {
+        method: "POST",
+      }),
+
+    deleteAccount: () =>
+      request<{ success: boolean }>("/students/me", { method: "DELETE" }),
 
     createProject: (data: {
       title: string;

@@ -145,8 +145,14 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
             status: nfc.rows[0].status,
             cardNumber: nfc.rows[0].card_number,
             linkedAt: nfc.rows[0].issued_at?.toISOString().split("T")[0],
-            totalTaps: nfc.rows[0].total_taps,
-            lastTap: nfc.rows[0].last_tap_at,
+            totalTaps: nfc.rows[0].total_taps ?? 0,
+            lastTap: nfc.rows[0].last_tap_at
+              ? new Date(nfc.rows[0].last_tap_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : null,
             profileUrl: `/u/${s.username}`,
           }
         : null,
@@ -311,5 +317,82 @@ studentsRouter.delete("/me/experience/:id", async (req: AuthRequest, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete experience" });
+  }
+});
+
+/** PATCH /api/students/me/nfc/deactivate */
+studentsRouter.patch("/me/nfc/deactivate", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    if (!studentId) {
+      res.status(404).json({ error: "Student profile not found" });
+      return;
+    }
+
+    const result = await query(
+      `UPDATE nfc_cards SET status = 'deactivated'
+       WHERE student_id = $1 AND status = 'active'
+       RETURNING id`,
+      [studentId],
+    );
+
+    if (!result.rowCount) {
+      res.status(404).json({ error: "No active NFC card found" });
+      return;
+    }
+
+    res.json({ success: true, message: "NFC card deactivated" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to deactivate card" });
+  }
+});
+
+/** POST /api/students/me/nfc/replacement-request */
+studentsRouter.post("/me/nfc/replacement-request", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    if (!studentId) {
+      res.status(404).json({ error: "Student profile not found" });
+      return;
+    }
+
+    const student = await query<{ name: string; username: string }>(
+      `SELECT name, username FROM students WHERE id = $1`,
+      [studentId],
+    );
+    if (!student.rowCount) {
+      res.status(404).json({ error: "Student not found" });
+      return;
+    }
+
+    const { sendEmail } = await import("../services/email.service.js");
+    const { getEnv } = await import("../config/env.js");
+    const env = getEnv();
+    const fromEmail = env.RESEND_FROM_EMAIL;
+
+    if (fromEmail) {
+      await sendEmail({
+        to: fromEmail.replace(/^[^<]*<([^>]+)>.*$/, "$1").trim() || fromEmail,
+        subject: `NFC replacement request — ${student.rows[0].name}`,
+        html: `<p>${student.rows[0].name} (${student.rows[0].username}) requested a replacement NFC card.</p>`,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Replacement request submitted. Your administrator will follow up.",
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to submit replacement request" });
+  }
+});
+
+/** DELETE /api/students/me — delete own account */
+studentsRouter.delete("/me", async (req: AuthRequest, res) => {
+  try {
+    await query(`DELETE FROM users WHERE id = $1`, [req.user!.userId]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete account" });
   }
 });

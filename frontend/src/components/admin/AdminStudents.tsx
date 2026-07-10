@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, Nfc } from "lucide-react";
+import { Search, Nfc, Pencil, Trash2, UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,10 +22,11 @@ import { ProgramNfcCardDialog } from "./ProgramNfcCardDialog";
 import { SetupError, DB_SETUP_STEPS } from "@/components/layout/SetupError";
 import { api, ApiError, type AdminStudent } from "@/lib/api";
 
-const statusVariant: Record<string, "success" | "warning" | "outline"> = {
+const statusVariant: Record<string, "success" | "warning" | "outline" | "primary"> = {
   active: "success",
   pending: "warning",
   inactive: "outline",
+  unclaimed: "primary",
 };
 
 export function AdminStudents() {
@@ -35,7 +36,12 @@ export function AdminStudents() {
   const [search, setSearch] = React.useState("");
   const [programStudent, setProgramStudent] = React.useState<AdminStudent | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
+  const [preregisterOpen, setPreregisterOpen] = React.useState(false);
+  const [editStudent, setEditStudent] = React.useState<AdminStudent | null>(null);
+  const [deleteStudent, setDeleteStudent] = React.useState<AdminStudent | null>(null);
   const [form, setForm] = React.useState({ name: "", email: "", password: "", university: "", major: "" });
+  const [preregisterForm, setPreregisterForm] = React.useState({ name: "", university: "", major: "" });
+  const [editForm, setEditForm] = React.useState({ name: "", university: "", major: "", status: "active" });
   const [submitting, setSubmitting] = React.useState(false);
 
   const loadStudents = React.useCallback(() => {
@@ -53,6 +59,17 @@ export function AdminStudents() {
   React.useEffect(() => {
     loadStudents();
   }, [loadStudents]);
+
+  React.useEffect(() => {
+    if (editStudent) {
+      setEditForm({
+        name: editStudent.name,
+        university: editStudent.university,
+        major: editStudent.major,
+        status: editStudent.status === "unclaimed" ? "pending" : editStudent.status,
+      });
+    }
+  }, [editStudent]);
 
   const handleAddStudent = async () => {
     if (!form.name || !form.email || !form.password) return;
@@ -76,10 +93,67 @@ export function AdminStudents() {
     }
   };
 
+  const handlePreregister = async () => {
+    if (!preregisterForm.name.trim()) return;
+    setSubmitting(true);
+    try {
+      const student = await api.admin.preregisterStudent({
+        name: preregisterForm.name.trim().toUpperCase(),
+        university: preregisterForm.university || undefined,
+        major: preregisterForm.major || undefined,
+      });
+      setStudents((prev) => [...prev, student].sort((a, b) => a.name.localeCompare(b.name)));
+      setPreregisterForm({ name: "", university: "", major: "" });
+      setPreregisterOpen(false);
+      toast.success(`Pre-registered ${student.name} — ready for Google claim`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to pre-register student");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!editStudent) return;
+    setSubmitting(true);
+    try {
+      const updated = await api.admin.updateStudent(editStudent.id, {
+        name: editForm.name,
+        university: editForm.university,
+        major: editForm.major,
+        status: editForm.status,
+      });
+      setStudents((prev) =>
+        prev.map((s) => (s.id === editStudent.id ? { ...s, ...updated } : s)).sort((a, b) => a.name.localeCompare(b.name)),
+      );
+      setEditStudent(null);
+      toast.success("Student updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update student");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteStudent) return;
+    setSubmitting(true);
+    try {
+      await api.admin.deleteStudent(deleteStudent.id);
+      setStudents((prev) => prev.filter((s) => s.id !== deleteStudent.id));
+      setDeleteStudent(null);
+      toast.success("Student removed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete student");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const filtered = students.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()) ||
+      (s.email ?? "").toLowerCase().includes(search.toLowerCase()) ||
       s.university.toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -104,8 +178,16 @@ export function AdminStudents() {
     <div>
       <PageHeader
         title="Students"
-        description="Search students and program NFC cards via the server USB reader."
-        actions={<Button onClick={() => setAddOpen(true)}>Add Student</Button>}
+        description="Manage students, pre-register for Google name claim, and assign NFC profile URLs."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setPreregisterOpen(true)}>
+              <UserPlus className="h-4 w-4" />
+              Pre-register
+            </Button>
+            <Button onClick={() => setAddOpen(true)}>Add Student</Button>
+          </div>
+        }
       />
 
       <Card className="shadow-card">
@@ -141,7 +223,7 @@ export function AdminStudents() {
                         <Avatar name={student.name} size="sm" />
                         <div>
                           <p className="font-medium">{student.name}</p>
-                          <p className="text-xs text-muted-foreground">{student.email}</p>
+                          <p className="text-xs text-muted-foreground">{student.email ?? "No account yet"}</p>
                         </div>
                       </div>
                     </td>
@@ -152,11 +234,17 @@ export function AdminStudents() {
                     </td>
                     <td className="hidden px-4 py-3 font-mono text-xs sm:table-cell">{student.nfcCard ?? "—"}</td>
                     <td className="px-4 py-3">
-                      <Button variant="outline" size="sm" onClick={() => setProgramStudent(student)}>
-                        <Nfc className="h-4 w-4" />
-                        <span className="hidden sm:inline">Program NFC Card</span>
-                        <span className="sm:hidden">Program</span>
-                      </Button>
+                      <div className="flex flex-wrap gap-1">
+                        <Button variant="outline" size="sm" onClick={() => setProgramStudent(student)} title="Assign NFC URL">
+                          <Nfc className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditStudent(student)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setDeleteStudent(student)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-error" />
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -179,11 +267,37 @@ export function AdminStudents() {
         />
       ) : null}
 
+      <Dialog open={preregisterOpen} onOpenChange={setPreregisterOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pre-register Student</DialogTitle>
+            <DialogDescription>
+              Enter their legal name in CAPS (same as NFC records). They will claim this profile after Google sign-in.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input
+              placeholder="ALEX MORGAN"
+              value={preregisterForm.name}
+              onChange={(e) => setPreregisterForm((f) => ({ ...f, name: e.target.value.toUpperCase() }))}
+            />
+            <Input placeholder="University" value={preregisterForm.university} onChange={(e) => setPreregisterForm((f) => ({ ...f, university: e.target.value }))} />
+            <Input placeholder="Major" value={preregisterForm.major} onChange={(e) => setPreregisterForm((f) => ({ ...f, major: e.target.value }))} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreregisterOpen(false)}>Cancel</Button>
+            <Button onClick={handlePreregister} disabled={submitting || !preregisterForm.name.trim()}>
+              {submitting ? "Saving…" : "Pre-register"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Student</DialogTitle>
-            <DialogDescription>Create a new student account.</DialogDescription>
+            <DialogDescription>Create a student with email and password login.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <Input placeholder="Full name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
@@ -194,11 +308,53 @@ export function AdminStudents() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleAddStudent}
-              disabled={submitting || !form.name || !form.email || !form.password}
-            >
+            <Button onClick={handleAddStudent} disabled={submitting || !form.name || !form.email || !form.password}>
               {submitting ? "Creating…" : "Create Student"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editStudent)} onOpenChange={(open) => !open && setEditStudent(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Student</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+            <Input placeholder="University" value={editForm.university} onChange={(e) => setEditForm((f) => ({ ...f, university: e.target.value }))} />
+            <Input placeholder="Major" value={editForm.major} onChange={(e) => setEditForm((f) => ({ ...f, major: e.target.value }))} />
+            {editStudent?.status !== "unclaimed" ? (
+              <select
+                className="flex h-11 w-full rounded-xl border border-border bg-background px-4 text-sm"
+                value={editForm.status}
+                onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
+              >
+                <option value="active">active</option>
+                <option value="pending">pending</option>
+                <option value="inactive">inactive</option>
+              </select>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditStudent(null)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={submitting}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteStudent)} onOpenChange={(open) => !open && setDeleteStudent(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete student?</DialogTitle>
+            <DialogDescription>
+              This permanently removes {deleteStudent?.name} and their profile data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteStudent(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={submitting}>
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

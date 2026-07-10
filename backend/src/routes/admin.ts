@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { query } from "../db/pool.js";
-import { requireAuth, requireAdmin, requireStudent, type AuthRequest } from "../middleware/supabase-auth.js";
+import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/supabase-auth.js";
 import { getStorageStats } from "../services/storage.js";
 
 export const adminRouter = Router();
@@ -202,13 +202,21 @@ adminRouter.patch("/students/:id", async (req, res) => {
 /** DELETE /api/admin/students/:id */
 adminRouter.delete("/students/:id", async (req, res) => {
   try {
-    const student = await query(`SELECT user_id FROM students WHERE id = $1`, [req.params.id]);
+    const student = await query<{ user_id: string | null }>(
+      `SELECT user_id FROM students WHERE id = $1`,
+      [req.params.id],
+    );
     if (!student.rowCount) {
       res.status(404).json({ error: "Student not found" });
       return;
     }
 
-    await query(`DELETE FROM users WHERE id = $1`, [student.rows[0].user_id]);
+    const userId = student.rows[0].user_id;
+    if (userId) {
+      await query(`DELETE FROM users WHERE id = $1`, [userId]);
+    } else {
+      await query(`DELETE FROM students WHERE id = $1`, [req.params.id]);
+    }
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete student" });

@@ -17,6 +17,7 @@ export function StudentProfile() {
   const [form, setForm] = React.useState<Partial<StudentProfile>>({});
   const [saving, setSaving] = React.useState(false);
   const [uploadingAvatar, setUploadingAvatar] = React.useState(false);
+  const [uploadingCover, setUploadingCover] = React.useState(false);
 
   React.useEffect(() => {
     if (data?.profile) setForm(data.profile);
@@ -68,7 +69,23 @@ export function StudentProfile() {
     }
   };
 
+  const handleCoverUpload = async (files: File[]) => {
+    const file = files[0];
+    if (!file) return;
+    setUploadingCover(true);
+    try {
+      await api.students.uploadCover(file);
+      toast.success("Cover image uploaded");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
   const avatarSrc = fileUrl(form.avatar ?? data.profile.avatar);
+  const coverSrc = fileUrl(form.coverImage ?? data.profile.coverImage);
 
   return (
     <div>
@@ -81,6 +98,20 @@ export function StudentProfile() {
           </Button>
         }
       />
+
+      <Card className="shadow-card lg:col-span-3 overflow-hidden">
+        <div
+          className="h-32 bg-gradient-to-r from-primary/20 to-accent/20 bg-cover bg-center"
+          style={coverSrc ? { backgroundImage: `url(${coverSrc})` } : undefined}
+        />
+        <CardContent className="pt-4">
+          {uploadingCover ? (
+            <Spinner />
+          ) : (
+            <Upload label="Upload cover photo" accept="image/*" helperText="JPG or PNG, max 5MB" onUpload={handleCoverUpload} />
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="shadow-card lg:col-span-1">
