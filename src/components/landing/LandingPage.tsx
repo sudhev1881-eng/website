@@ -8,7 +8,6 @@ import {
   GraduationCap,
   Shield,
   FolderOpen,
-  ChevronDown,
   ArrowRight,
 } from "lucide-react";
 import { Navbar, Footer } from "@/components/ui";
