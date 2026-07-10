@@ -34,12 +34,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example
-!server/.env.example
+!frontend/.env.example
+!backend/.env.example
 
 # vercel
 .vercel
 
-server/uploads/
-server/dist/
+backend/uploads/
+backend/dist/
+frontend/.next/
 *.tsbuildinfo
 next-env.d.ts
