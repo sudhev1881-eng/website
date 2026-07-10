@@ -1,12 +1,21 @@
+import "dotenv/config";
 import { readdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
-import { getPool, closePool } from "../src/db/pool.js";
+import pg from "pg";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+function getMigrationUrl(): string {
+  const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("Set DIRECT_URL or DATABASE_URL in backend/.env");
+  }
+  return url;
+}
+
 async function migrate() {
-  const pool = getPool();
+  const pool = new pg.Pool({ connectionString: getMigrationUrl() });
   const files = readdirSync(join(__dirname, "migrations"))
     .filter((f) => f.endsWith(".sql"))
     .sort();
@@ -17,7 +26,7 @@ async function migrate() {
     console.log(`Applied ${file}`);
   }
 
-  await closePool();
+  await pool.end();
 }
 
 migrate().catch((err) => {

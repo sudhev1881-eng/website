@@ -16,7 +16,9 @@ Deploy StudentLink to **Vercel** (frontend), **Oracle Cloud** (API), and **Supab
 
 ### Database
 1. Create a project at [supabase.com](https://supabase.com).
-2. Copy **Database URI** (pooler, port 6543) → `DATABASE_URL`.
+2. Copy connection strings from **Project Settings → Database**:
+   - **Transaction mode** (pooler port 6543, `?pgbouncer=true`) → `DATABASE_URL` (app runtime)
+   - **Session mode** (pooler port 5432) → `DIRECT_URL` (migrations and seed)
 
 ### Auth
 1. Authentication → Providers → enable **Google**.
@@ -33,7 +35,7 @@ Deploy StudentLink to **Vercel** (frontend), **Oracle Cloud** (API), and **Supab
 ### Run migrations
 ```bash
 cp backend/.env.example backend/.env
-# Fill DATABASE_URL and Supabase keys
+# Fill DATABASE_URL, DIRECT_URL, and Supabase keys
 chmod +x scripts/migrate.sh
 ./scripts/migrate.sh
 ```
@@ -97,7 +99,8 @@ Update `nginx/conf.d/api.conf` with your domain.
 ## 4. Environment checklist
 
 ### Backend (`backend/.env`)
-- [ ] `DATABASE_URL` — Supabase pooler URI
+- [ ] `DATABASE_URL` — Supabase transaction-mode pooler (port 6543)
+- [ ] `DIRECT_URL` — Supabase session-mode pooler (port 5432, migrations/seed)
 - [ ] `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - [ ] `JWT_SECRET` — 32+ random characters
 - [ ] `SITE_URL`, `CORS_ORIGIN`, `API_PUBLIC_URL`

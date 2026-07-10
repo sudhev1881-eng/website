@@ -1,14 +1,30 @@
+import "dotenv/config";
 import bcrypt from "bcryptjs";
-import { query, closePool } from "../src/db/pool.js";
+import pg from "pg";
+
+function getSetupUrl(): string {
+  const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+  if (!url) throw new Error("Set DIRECT_URL or DATABASE_URL in backend/.env");
+  return url;
+}
 
 async function seed() {
+  const pool = new pg.Pool({ connectionString: getSetupUrl() });
+
+  async function q<T extends pg.QueryResultRow = pg.QueryResultRow>(
+    text: string,
+    params?: unknown[],
+  ): Promise<pg.QueryResult<T>> {
+    return pool.query<T>(text, params);
+  }
+
   console.log("Seeding database...");
 
   const adminHash = await bcrypt.hash("admin123", 10);
   const studentHash = await bcrypt.hash("student123", 10);
 
   // Admin user
-  const adminUser = await query<{ id: string }>(
+  const adminUser = await q<{ id: string }>(
     `INSERT INTO users (email, password_hash, role)
      VALUES ($1, $2, 'admin')
      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
@@ -17,7 +33,7 @@ async function seed() {
   );
 
   // Alex Morgan student
-  const alexUser = await query<{ id: string }>(
+  const alexUser = await q<{ id: string }>(
     `INSERT INTO users (email, password_hash, role)
      VALUES ($1, $2, 'student')
      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
@@ -25,7 +41,7 @@ async function seed() {
     ["alex.morgan@stanford.edu", studentHash],
   );
 
-  const alexStudent = await query<{ id: string }>(
+  const alexStudent = await q<{ id: string }>(
     `INSERT INTO students (
       user_id, username, name, title, university, major, graduation_year,
       bio, location, github, linkedin, portfolio, phone,
@@ -59,11 +75,11 @@ async function seed() {
   const studentId = alexStudent.rows[0].id;
 
   // Clear existing seed data for alex
-  await query(`DELETE FROM projects WHERE student_id = $1`, [studentId]);
-  await query(`DELETE FROM skills WHERE student_id = $1`, [studentId]);
-  await query(`DELETE FROM certificates WHERE student_id = $1`, [studentId]);
-  await query(`DELETE FROM experience WHERE student_id = $1`, [studentId]);
-  await query(`DELETE FROM resumes WHERE student_id = $1`, [studentId]);
+  await q(`DELETE FROM projects WHERE student_id = $1`, [studentId]);
+  await q(`DELETE FROM skills WHERE student_id = $1`, [studentId]);
+  await q(`DELETE FROM certificates WHERE student_id = $1`, [studentId]);
+  await q(`DELETE FROM experience WHERE student_id = $1`, [studentId]);
+  await q(`DELETE FROM resumes WHERE student_id = $1`, [studentId]);
 
   const projects = [
     ["Campus Events Platform", "Full-stack event management system serving 5,000+ students", ["React", "Node.js", "PostgreSQL"], "https://github.com/alexmorgan/campus-events", true],
@@ -73,7 +89,7 @@ async function seed() {
 
   for (let i = 0; i < projects.length; i++) {
     const [title, description, tech, url, featured] = projects[i];
-    await query(
+    await q(
       `INSERT INTO projects (student_id, title, description, tech, url, featured, sort_order)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [studentId, title, description, tech, url, featured, i],
@@ -93,7 +109,7 @@ async function seed() {
 
   for (let i = 0; i < skills.length; i++) {
     const [name, level, category] = skills[i];
-    await query(
+    await q(
       `INSERT INTO skills (student_id, name, level, category, sort_order) VALUES ($1, $2, $3, $4, $5)`,
       [studentId, name, level, category, i],
     );
@@ -107,7 +123,7 @@ async function seed() {
 
   for (let i = 0; i < certs.length; i++) {
     const [name, issuer, date] = certs[i];
-    await query(
+    await q(
       `INSERT INTO certificates (student_id, name, issuer, issued_date, sort_order) VALUES ($1, $2, $3, $4, $5)`,
       [studentId, name, issuer, date, i],
     );
@@ -120,19 +136,19 @@ async function seed() {
 
   for (let i = 0; i < exps.length; i++) {
     const [role, company, period, description] = exps[i];
-    await query(
+    await q(
       `INSERT INTO experience (student_id, role, company, period, description, sort_order) VALUES ($1, $2, $3, $4, $5, $6)`,
       [studentId, role, company, period, description, i],
     );
   }
 
-  await query(
+  await q(
     `INSERT INTO resumes (student_id, file_name, file_size_bytes, version, is_active)
      VALUES ($1, $2, $3, $4, TRUE)`,
     [studentId, "Alex_Morgan_Resume_2025.pdf", 250880, 3],
   );
 
-  await query(
+  await q(
     `INSERT INTO nfc_cards (card_number, student_id, status, total_taps)
      VALUES ($1, $2, 'active', $3)
      ON CONFLICT (card_number) DO UPDATE SET student_id = EXCLUDED.student_id`,
@@ -140,7 +156,7 @@ async function seed() {
   );
 
   // Sarah Chen
-  const sarahUser = await query<{ id: string }>(
+  const sarahUser = await q<{ id: string }>(
     `INSERT INTO users (email, password_hash, role)
      VALUES ($1, $2, 'student')
      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
@@ -148,7 +164,7 @@ async function seed() {
     ["sarah.chen@mit.edu", studentHash],
   );
 
-  const sarahStudent = await query<{ id: string }>(
+  const sarahStudent = await q<{ id: string }>(
     `INSERT INTO students (
       user_id, username, name, title, university, major, bio,
       github, linkedin, portfolio, phone, profile_views
@@ -172,8 +188,8 @@ async function seed() {
   );
 
   const sarahId = sarahStudent.rows[0].id;
-  await query(`DELETE FROM projects WHERE student_id = $1`, [sarahId]);
-  await query(
+  await q(`DELETE FROM projects WHERE student_id = $1`, [sarahId]);
+  await q(
     `INSERT INTO projects (student_id, title, description, tech, url, featured, sort_order)
      VALUES ($1, $2, $3, $4, $5, TRUE, 0)`,
     [sarahId, "Smart Home Hub", "IoT central controller with voice integration", ["C++", "ESP32", "MQTT"], "#"],
@@ -182,14 +198,14 @@ async function seed() {
   // Universities
   const unis = ["Stanford University", "MIT", "UC Berkeley", "Georgia Tech"];
   for (const name of unis) {
-    await query(
+    await q(
       `INSERT INTO universities (name) VALUES ($1) ON CONFLICT (name) DO NOTHING`,
       [name],
     );
   }
 
   // Pre-registered student for Google name-claim demo (no login yet)
-  await query(
+  await q(
     `INSERT INTO students (username, name, university, major, status, user_id)
      VALUES ($1, $2, $3, $4, 'pending', NULL)
      ON CONFLICT (username) DO NOTHING`,
@@ -203,7 +219,7 @@ async function seed() {
   console.log("  Google claim demo: pre-registered JAMES WILSON (no account yet)");
   console.log("  Admin user id:", adminUser.rows[0].id);
 
-  await closePool();
+  await pool.end();
 }
 
 seed().catch((err) => {
