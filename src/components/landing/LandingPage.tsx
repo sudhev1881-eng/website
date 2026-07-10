@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { Navbar, Footer } from "@/components/ui";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StudentLinkLogo } from "@/components/brand/StudentLinkLogo";
 import {
@@ -22,7 +22,6 @@ import {
   landingFeatures,
   howItWorks,
   universities,
-  pricingPlans,
   faqs,
   testimonials,
 } from "@/data/studentlink";
@@ -183,51 +182,6 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing */}
-      <section id="pricing" className="px-4 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight">Simple, transparent pricing</h2>
-            <p className="mt-3 text-muted-foreground">Start free, upgrade when you&apos;re ready</p>
-          </div>
-          <div className="mt-12 grid gap-6 lg:grid-cols-3">
-            {pricingPlans.map((plan) => (
-              <Card
-                key={plan.name}
-                className={plan.highlighted ? "border-primary shadow-card-hover ring-2 ring-primary/20" : "shadow-card"}
-              >
-                <CardHeader>
-                  {plan.highlighted ? <Badge variant="primary" className="w-fit">Most Popular</Badge> : null}
-                  <CardTitle>{plan.name}</CardTitle>
-                  <CardDescription>{plan.description}</CardDescription>
-                  <div className="mt-4">
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    <span className="text-muted-foreground">{plan.period}</span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-3">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button
-                    className="mt-6 w-full"
-                    variant={plan.highlighted ? "primary" : "outline"}
-                    href="/login"
-                  >
-                    {plan.cta}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Testimonials */}
       <section className="border-t border-border bg-surface/30 px-4 py-20 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">
@@ -295,7 +249,7 @@ export function LandingPage() {
         logo={<StudentLinkLogo />}
         description={studentLink.description}
         groups={[
-          { title: "Product", links: [{ label: "Features", href: "#features" }, { label: "Pricing", href: "#pricing" }, { label: "Universities", href: "#universities" }] },
+          { title: "Product", links: [{ label: "Features", href: "#features" }, { label: "Universities", href: "#universities" }] },
           { title: "Company", links: [{ label: "About", href: "#" }, { label: "Blog", href: "#" }, { label: "Careers", href: "#" }] },
           { title: "Support", links: [{ label: "Help Center", href: "#" }, { label: "Contact", href: "#contact" }, { label: "Privacy", href: "#" }] },
         ]}

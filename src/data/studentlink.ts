@@ -13,7 +13,6 @@ export const studentLink = {
     { label: "How It Works", href: "#how-it-works" },
     { label: "Features", href: "#features" },
     { label: "Universities", href: "#universities" },
-    { label: "Pricing", href: "#pricing" },
     { label: "FAQ", href: "#faq" },
   ],
   cta: {
@@ -88,53 +87,6 @@ export const universities = [
   { name: "Carnegie Mellon", students: 760, logo: "CMU" },
 ];
 
-export const pricingPlans = [
-  {
-    name: "Student",
-    price: "Free",
-    period: "",
-    description: "Everything you need to get started",
-    features: [
-      "Digital profile & portfolio",
-      "Resume upload & sharing",
-      "Basic analytics",
-      "QR code sharing",
-    ],
-    cta: "Get Started",
-    highlighted: false,
-  },
-  {
-    name: "Pro",
-    price: "$9",
-    period: "/month",
-    description: "For serious job seekers",
-    features: [
-      "Everything in Student",
-      "NFC card (1 included)",
-      "Advanced analytics",
-      "Custom profile URL",
-      "Priority support",
-    ],
-    cta: "Start Pro Trial",
-    highlighted: true,
-  },
-  {
-    name: "University",
-    price: "Custom",
-    period: "",
-    description: "For career services teams",
-    features: [
-      "Unlimited student accounts",
-      "Admin dashboard",
-      "Bulk NFC card management",
-      "University-wide analytics",
-      "Dedicated support",
-    ],
-    cta: "Contact Sales",
-    highlighted: false,
-  },
-];
-
 export const faqs = [
   {
     question: "How does the NFC card work?",
@@ -144,7 +96,7 @@ export const faqs = [
   {
     question: "Is StudentLink free for students?",
     answer:
-      "Yes! The Student plan is completely free and includes a digital profile, resume sharing, and basic analytics. NFC cards are available with the Pro plan.",
+      "Yes! StudentLink is free for students through your university. You get a digital profile, resume sharing, analytics, and NFC card integration.",
   },
   {
     question: "Can recruiters download my resume?",

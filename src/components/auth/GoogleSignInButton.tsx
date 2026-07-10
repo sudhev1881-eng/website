@@ -14,9 +14,23 @@ export function GoogleSignInButton({ onCredential, disabled }: GoogleSignInButto
 
   if (!clientId) {
     return (
-      <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-center text-xs text-muted-foreground">
-        Google Sign-In: set <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID</code> in <code>.env.local</code>
-      </p>
+      <div className="rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-left text-xs text-muted-foreground space-y-2">
+        <p className="font-medium text-foreground">Google Sign-In not configured</p>
+        <ol className="list-decimal list-inside space-y-1">
+          <li>
+            Add your Client ID to <code>.env.local</code>:{" "}
+            <code>NEXT_PUBLIC_GOOGLE_CLIENT_ID=….apps.googleusercontent.com</code>
+          </li>
+          <li>
+            Add the same ID to <code>server/.env</code>: <code>GOOGLE_CLIENT_ID=…</code>
+          </li>
+          <li>Restart <code>npm run dev</code> and <code>cd server && npm run dev</code></li>
+        </ol>
+        <p>
+          In Google Cloud → Credentials → your OAuth client → Authorized JavaScript origins:{" "}
+          <code>http://localhost:3000</code>
+        </p>
+      </div>
     );
   }
 
