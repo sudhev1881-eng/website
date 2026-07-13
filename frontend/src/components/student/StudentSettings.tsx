@@ -11,7 +11,6 @@ import { useAuth } from "@/providers/auth-provider";
 import { toast } from "@/components/ui/toast";
 import { api } from "@/lib/api";
 import { clearToken } from "@/lib/auth-token";
-import { WindowsHelloSettings } from "@/components/auth/WindowsHelloSettings";
 
 export function StudentSettings() {
   const router = useRouter();
@@ -91,8 +90,6 @@ export function StudentSettings() {
             </Button>
           </CardContent>
         </Card>
-
-        <WindowsHelloSettings />
 
         <Card className="shadow-card">
           <CardHeader>
