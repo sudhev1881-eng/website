@@ -1,0 +1,11 @@
+// StudentLink Prisma schema
+// Existing SQL migrations live in db/migrations/ — use those for schema changes.
+// Use `npx prisma db pull` to refresh models from the live Supabase database.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

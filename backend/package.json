@@ -9,9 +9,12 @@
     "start": "node dist/index.js",
     "db:migrate": "tsx db/migrate.ts",
     "db:seed": "tsx db/seed.ts",
-    "db:setup": "npm run db:migrate && npm run db:seed"
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "db:pull": "prisma db pull",
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
+    "@prisma/client": "^7.8.0",
     "@simplewebauthn/server": "^13.3.2",
     "@supabase/supabase-js": "^2.49.8",
     "bcryptjs": "^2.4.3",
@@ -37,6 +40,7 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^20",
     "@types/pg": "^8.11.10",
+    "prisma": "^7.8.0",
     "tsx": "^4.19.2",
     "typescript": "^5"
   }
