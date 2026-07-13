@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { useAuth } from "@/providers/auth-provider";
 import { ApiError, api } from "@/lib/api";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { WindowsHelloButton } from "@/components/auth/WindowsHelloButton";
 import { NameClaimDialog } from "@/components/auth/NameClaimDialog";
 import { friendlyAuthError } from "@/lib/auth-messages";
 import { UniversitySelect } from "@/components/ui/university-select";
@@ -183,7 +184,7 @@ export function AuthPage() {
                 Welcome to StudentLink
               </CardTitle>
               <CardDescription>
-                Sign in with Google (students) or email
+                Google, Windows Hello, or email
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -200,6 +201,7 @@ export function AuthPage() {
                 <TabsContent value="login" className="mt-0">
                   <div className="space-y-4">
                     <GoogleSignInButton disabled={submitting} />
+                    <WindowsHelloButton disabled={submitting} />
                     <div className="relative">
                       <div className="absolute inset-0 flex items-center">
                         <span className="w-full border-t border-border" />
@@ -238,7 +240,7 @@ export function AuthPage() {
                   </div>
                   <p className="mt-4 text-center text-xs text-muted-foreground">
                     Students: Google → enter name in CAPS to claim your NFC
-                    profile.
+                    profile. After approval, enable Windows Hello in Settings.
                   </p>
                 </TabsContent>
 

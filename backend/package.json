@@ -12,6 +12,7 @@
     "db:setup": "npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.2",
     "@supabase/supabase-js": "^2.49.8",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",

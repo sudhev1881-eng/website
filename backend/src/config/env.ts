@@ -42,6 +42,16 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== "false"),
+  /** WebAuthn RP ID — hostname only, e.g. localhost or yourdomain.com */
+  WEBAUTHN_RP_ID: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v : undefined)),
+  /** WebAuthn expected origin — defaults to SITE_URL */
+  WEBAUTHN_ORIGIN: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v : undefined)),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -59,6 +69,23 @@ export function getEnv(): Env {
   }
   cached = parsed.data;
   return cached;
+}
+
+/** Hostname for WebAuthn RP ID (e.g. localhost or yourdomain.com). */
+export function getWebAuthnRpId(): string {
+  const env = getEnv();
+  if (env.WEBAUTHN_RP_ID) return env.WEBAUTHN_RP_ID;
+  try {
+    return new URL(env.SITE_URL).hostname;
+  } catch {
+    return "localhost";
+  }
+}
+
+/** Expected browser origin for WebAuthn (e.g. http://localhost:3000). */
+export function getWebAuthnOrigin(): string {
+  const env = getEnv();
+  return (env.WEBAUTHN_ORIGIN ?? env.SITE_URL).replace(/\/$/, "");
 }
 
 export function resetEnvCache(): void {

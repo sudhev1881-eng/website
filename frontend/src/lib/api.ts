@@ -122,6 +122,14 @@ export interface GoogleAuthResponse {
   matchedName?: string;
 }
 
+export interface WebAuthnCredentialInfo {
+  id: string;
+  label: string;
+  deviceType: string;
+  backedUp: boolean;
+  createdAt: string;
+}
+
 export interface StudentProfile {
   id: string;
   name: string;
@@ -357,6 +365,39 @@ export const api = {
         auth: false,
         headers: { Authorization: `Bearer ${accessToken}` },
       }),
+
+    webauthn: {
+      credentials: () => request<WebAuthnCredentialInfo[]>("/auth/webauthn/credentials"),
+
+      removeCredential: (id: string) =>
+        request<{ success: boolean }>(`/auth/webauthn/credentials/${id}`, {
+          method: "DELETE",
+        }),
+
+      registerOptions: () =>
+        request<Record<string, unknown>>("/auth/webauthn/register/options", {
+          method: "POST",
+        }),
+
+      registerVerify: (response: unknown, label?: string) =>
+        request<WebAuthnCredentialInfo>("/auth/webauthn/register/verify", {
+          method: "POST",
+          body: JSON.stringify({ response, label }),
+        }),
+
+      loginOptions: () =>
+        request<Record<string, unknown>>("/auth/webauthn/login/options", {
+          method: "POST",
+          auth: false,
+        }),
+
+      loginVerify: (response: unknown) =>
+        request<AuthResponse>("/auth/webauthn/login/verify", {
+          method: "POST",
+          body: JSON.stringify({ response }),
+          auth: false,
+        }),
+    },
   },
 
   students: {

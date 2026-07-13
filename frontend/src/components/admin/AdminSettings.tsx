@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
 import { api, type NfcReaderStatus } from "@/lib/api";
+import { WindowsHelloSettings } from "@/components/auth/WindowsHelloSettings";
 
 export function AdminSettings() {
   const [readerStatus, setReaderStatus] = React.useState<NfcReaderStatus | null>(null);
@@ -85,6 +86,8 @@ export function AdminSettings() {
             </Button>
           </CardContent>
         </Card>
+
+        <WindowsHelloSettings />
 
         <Card className="shadow-card">
           <CardHeader>

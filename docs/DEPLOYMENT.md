@@ -106,6 +106,7 @@ Update `nginx/conf.d/api.conf` with your domain.
 - [ ] `SITE_URL`, `CORS_ORIGIN`, `API_PUBLIC_URL`
 - [ ] `TRUST_PROXY=true`
 - [ ] `MAILERSEND_API_KEY` (optional)
+- [ ] `WEBAUTHN_RP_ID` / `WEBAUTHN_ORIGIN` (Windows Hello passkeys; defaults from SITE_URL)
 
 ### Frontend (Vercel)
 - [ ] All `NEXT_PUBLIC_*` variables set

@@ -7,6 +7,7 @@ import { applySecurityMiddleware } from "./middleware/security.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { healthRouter } from "./routes/health.js";
 import { authRouter } from "./routes/auth.js";
+import { webauthnRouter } from "./routes/webauthn.js";
 import { studentsRouter } from "./routes/students.js";
 import { profilesRouter } from "./routes/profiles.js";
 import { adminRouter } from "./routes/admin.js";
@@ -31,6 +32,7 @@ app.use(express.json({ limit: "256kb" }));
 
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
+app.use("/api/auth/webauthn", webauthnRouter);
 app.use("/api/students", studentsRouter);
 app.use("/api/students", uploadsRouter);
 app.use("/api/profiles", profilesRouter);
