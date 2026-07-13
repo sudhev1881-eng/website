@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,7 @@ export interface FooterSocialLink {
 }
 
 export interface FooterProps {
-  logo?: React.ReactNode;
+  logo?: ReactNode;
   description?: string;
   groups?: FooterLinkGroup[];
   social?: FooterSocialLink[];
@@ -49,7 +50,7 @@ export function Footer({
                   const Icon = item.icon;
                   return (
                     <a
-                      key={item.href}
+                      key={item.label}
                       href={item.href}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -69,7 +70,7 @@ export function Footer({
               <h4 className="text-sm font-bold text-foreground">{group.title}</h4>
               <ul className="space-y-2">
                 {group.links.map((link) => (
-                  <li key={link.href}>
+                  <li key={`${group.title}-${link.label}`}>
                     <Link
                       href={link.href}
                       className="text-sm text-muted-foreground transition-colors hover:text-foreground"

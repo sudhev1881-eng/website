@@ -102,6 +102,14 @@ export interface AuthResponse {
   student?: { id: string; username: string };
 }
 
+export interface RegisterResponse {
+  pendingApproval: boolean;
+  message: string;
+  user: AuthUser;
+  student?: { id: string; username: string };
+  token?: string;
+}
+
 export interface GoogleAuthResponse {
   needsClaim: boolean;
   token?: string;
@@ -290,9 +298,14 @@ export interface NfcProgramResult {
 export const api = {
   health: () => request<{ status: string; service: string }>("/health", { auth: false }),
 
+  universities: {
+    list: () =>
+      request<Array<{ id: string; name: string }>>("/universities", { auth: false }),
+  },
+
   auth: {
-    register: (data: { email: string; password: string; name: string; university?: string }) =>
-      request<AuthResponse>("/auth/register", {
+    register: (data: { email: string; password: string; name: string; university: string }) =>
+      request<RegisterResponse>("/auth/register", {
         method: "POST",
         body: JSON.stringify(data),
         auth: false,
@@ -457,6 +470,12 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
+
+    approveStudent: (id: string) =>
+      request<AdminStudent>(`/admin/students/${id}/approve`, { method: "POST" }),
+
+    declineStudent: (id: string) =>
+      request<{ success: boolean }>(`/admin/students/${id}/decline`, { method: "POST" }),
 
     deleteStudent: (id: string) =>
       request<{ success: boolean }>(`/admin/students/${id}`, { method: "DELETE" }),

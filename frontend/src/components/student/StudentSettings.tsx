@@ -6,7 +6,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { useStudentData } from "@/providers/student-data-provider";
 import { useAuth } from "@/providers/auth-provider";
 import { toast } from "@/components/ui/toast";

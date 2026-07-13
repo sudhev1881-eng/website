@@ -21,7 +21,7 @@ StudentLink is a **cloud-native SaaS** for student digital profiles and NFC-link
          ┌──────────────────────────────────────────┼──────────────────┐
          ▼                    ▼                      ▼                  ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐
-│ Supabase        │  │ Supabase        │  │ Supabase        │  │ Resend       │
+│ Supabase        │  │ Supabase        │  │ Supabase        │  │ MailerSend   │
 │ PostgreSQL      │  │ Auth (Google)   │  │ Storage         │  │ Email        │
 └─────────────────┘  └─────────────────┘  └─────────────────┘  └──────────────┘
 ```

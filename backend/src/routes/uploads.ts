@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
 import { requireAuth, requireStudent, type AuthRequest } from "../middleware/supabase-auth.js";
-import { resumeUpload, imageUpload } from "../middleware/upload.js";
+import { resumeUpload, imageUpload, verifyFileSignature } from "../middleware/upload.js";
 import {
   deleteFile,
   saveFile,
@@ -65,6 +65,11 @@ uploadsRouter.post(
       const file = req.file;
       if (!file) {
         res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+
+      if (!verifyFileSignature(file.buffer, "resume")) {
+        res.status(400).json({ error: "File content does not match an allowed document type" });
         return;
       }
 
@@ -160,6 +165,11 @@ uploadsRouter.post(
         return;
       }
 
+      if (!verifyFileSignature(file.buffer, "image")) {
+        res.status(400).json({ error: "File content does not match an allowed image type" });
+        return;
+      }
+
       const existing = await query<{ avatar_url: string | null }>(
         `SELECT avatar_url FROM students WHERE id = $1`,
         [studentId],
@@ -210,6 +220,11 @@ uploadsRouter.post(
         return;
       }
 
+      if (!verifyFileSignature(file.buffer, "image")) {
+        res.status(400).json({ error: "File content does not match an allowed image type" });
+        return;
+      }
+
       const existing = await query<{ cover_image_url: string | null }>(
         `SELECT cover_image_url FROM students WHERE id = $1`,
         [studentId],
@@ -257,6 +272,11 @@ uploadsRouter.post(
       const file = req.file;
       if (!file) {
         res.status(400).json({ error: "No file uploaded" });
+        return;
+      }
+
+      if (!verifyFileSignature(file.buffer, "image")) {
+        res.status(400).json({ error: "File content does not match an allowed image type" });
         return;
       }
 

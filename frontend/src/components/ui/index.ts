@@ -58,3 +58,4 @@ export {
   type FooterSocialLink,
   type FooterProps,
 } from "./footer";
+export { GlassPill } from "./GlassPill";

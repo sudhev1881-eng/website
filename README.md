@@ -11,7 +11,7 @@ Cloud-native platform for student digital profiles and NFC-linked recruiter expe
 | Database | PostgreSQL | **Supabase** |
 | Auth | Google OAuth | **Supabase Auth** |
 | Storage | Object storage | **Supabase Storage** |
-| Email | Transactional email | **Resend** |
+| Email | Transactional email | **MailerSend** |
 
 ## Project structure
 

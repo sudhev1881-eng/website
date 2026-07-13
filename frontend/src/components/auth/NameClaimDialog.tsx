@@ -36,43 +36,70 @@ export function NameClaimDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-md">
+    <Dialog open={open} onOpenChange={(o) => !o && !submitting && onCancel()}>
+      <DialogContent className="max-w-md" onInteractOutside={(e) => submitting && e.preventDefault()}>
         <DialogHeader>
-          <DialogTitle>Confirm your name</DialogTitle>
+          <DialogTitle>Confirm your legal name</DialogTitle>
           <DialogDescription>
-            Signed in as <strong>{email}</strong>. Enter your legal first and last name
-            <strong> in capitals</strong> exactly as your university registered you for NFC.
+            {email ? (
+              <>
+                Signed in as <strong className="text-foreground">{email}</strong>.
+              </>
+            ) : (
+              <>Signed in with Google.</>
+            )}{" "}
+            Enter your first and last name in <strong className="text-foreground">CAPS</strong> exactly
+            as your school registered you for NFC.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <Input
             label="First name"
-            placeholder="ALEX"
+            placeholder="JAMES"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value.toUpperCase())}
-            className="uppercase"
+            className="uppercase tracking-wide"
             required
+            autoFocus
             autoComplete="given-name"
+            disabled={submitting}
           />
           <Input
             label="Last name"
-            placeholder="MORGAN"
+            placeholder="WILSON"
             value={lastName}
             onChange={(e) => setLastName(e.target.value.toUpperCase())}
-            className="uppercase"
+            className="uppercase tracking-wide"
             required
             autoComplete="family-name"
+            disabled={submitting}
           />
           <p className="text-xs text-muted-foreground">
-            Example: <code>ALEX MORGAN</code> — must match the name stored by your admin.
+            Name must match what your admin registered (CAPS). If you weren&apos;t
+            added yet, contact your admin or email{" "}
+            <a
+              className="text-primary underline-offset-2 hover:underline"
+              href="mailto:support@studentlink.app"
+            >
+              support@studentlink.app
+            </a>
+            .
           </p>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onCancel}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={submitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !firstName || !lastName}>
-              {submitting ? "Matching…" : "Claim my profile"}
+            <Button
+              type="submit"
+              loading={submitting}
+              disabled={!firstName || !lastName}
+            >
+              Claim my profile
             </Button>
           </DialogFooter>
         </form>

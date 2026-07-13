@@ -34,10 +34,33 @@ async function getStudentId(req: AuthRequest): Promise<string | null> {
   return result.rows[0]?.id ?? null;
 }
 
+async function assertStudentActive(req: AuthRequest, res: import("express").Response): Promise<string | null> {
+  const result = await query<{ id: string; status: string }>(
+    `SELECT id, status FROM students WHERE user_id = $1`,
+    [req.user!.userId],
+  );
+  const student = result.rows[0];
+  if (!student) {
+    res.status(404).json({ error: "Student profile not found" });
+    return null;
+  }
+  if (student.status !== "active") {
+    res.status(403).json({
+      error:
+        student.status === "pending"
+          ? "Your account is pending admin approval"
+          : "Your account is not active",
+    });
+    return null;
+  }
+  return student.id;
+}
+
 /** GET /api/students/me — full dashboard data */
 studentsRouter.get("/me", async (req: AuthRequest, res) => {
   try {
-    const studentId = await getStudentId(req);
+    const studentId = await assertStudentActive(req, res);
+    if (!studentId) return;
     if (!studentId) {
       res.status(404).json({ error: "Student profile not found" });
       return;
@@ -365,18 +388,11 @@ studentsRouter.post("/me/nfc/replacement-request", async (req: AuthRequest, res)
       return;
     }
 
-    const { sendEmail } = await import("../services/email.service.js");
-    const { getEnv } = await import("../config/env.js");
-    const env = getEnv();
-    const fromEmail = env.RESEND_FROM_EMAIL;
-
-    if (fromEmail) {
-      await sendEmail({
-        to: fromEmail.replace(/^[^<]*<([^>]+)>.*$/, "$1").trim() || fromEmail,
-        subject: `NFC replacement request — ${student.rows[0].name}`,
-        html: `<p>${student.rows[0].name} (${student.rows[0].username}) requested a replacement NFC card.</p>`,
-      });
-    }
+    const { notifyAdminNfcReplacement } = await import("../services/email.service.js");
+    notifyAdminNfcReplacement({
+      name: student.rows[0].name,
+      username: student.rows[0].username,
+    });
 
     res.json({
       success: true,

@@ -12,8 +12,25 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().min(1),
   SITE_URL: z.string().url(),
   API_PUBLIC_URL: z.string().url().optional(),
-  RESEND_API_KEY: z.string().optional(),
-  RESEND_FROM_EMAIL: z.string().email().optional(),
+  MAILERSEND_API_KEY: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v : undefined)),
+  /** Verified sender, e.g. StudentLink <noreply@yourdomain.com> or noreply@yourdomain.com */
+  MAILERSEND_FROM_EMAIL: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v : undefined)),
+  MAILERSEND_FROM_NAME: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v : undefined)),
+  /** Inbox for admin alerts (registrations, NFC). Falls back to MAILERSEND_FROM_EMAIL. */
+  ADMIN_NOTIFY_EMAIL: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v : undefined))
+    .pipe(z.string().email().optional()),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   TRUST_PROXY: z

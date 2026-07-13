@@ -1,6 +1,0 @@
-1:"$Sreact.fragment"
-2:I[1039,["/_next/static/chunks/0wf813lk-ff3i.js","/_next/static/chunks/14mrh2-p_w84d.js","/_next/static/chunks/014oeulksgz6f.js","/_next/static/chunks/0-n9cmyr93etb.js","/_next/static/chunks/38sgnipk59d90.js","/_next/static/chunks/1lgvb2nizg2n6.js","/_next/static/chunks/3f8lmq4zmupzu.js","/_next/static/chunks/39bovicq62ues.js"],"StudentDashboard"]
-3:I[97367,["/_next/static/chunks/0wf813lk-ff3i.js","/_next/static/chunks/14mrh2-p_w84d.js","/_next/static/chunks/014oeulksgz6f.js"],"OutletBoundary"]
-4:"$Sreact.suspense"
-0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{}],[["$","script","script-0",{"src":"/_next/static/chunks/0-n9cmyr93etb.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/38sgnipk59d90.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/1lgvb2nizg2n6.js","async":true}],["$","script","script-3",{"src":"/_next/static/chunks/3f8lmq4zmupzu.js","async":true}],["$","script","script-4",{"src":"/_next/static/chunks/39bovicq62ues.js","async":true}]],["$","$L3",null,{"children":["$","$4",null,{"name":"Next.MetadataOutlet","children":"$@5"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"olAatcF1JwwixnCS-giw4"}
-5:null

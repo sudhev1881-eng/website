@@ -1,11 +1,30 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { query } from "../db/pool.js";
 import { signToken, signClaimToken, verifyClaimToken, type AuthRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/supabase-auth.js";
+import { authRateLimit, sensitiveRateLimit } from "../middleware/security.js";
 import { verifyGoogleIdToken, normalizeLegalName } from "../services/google-auth.js";
 
 export const authRouter = Router();
+
+const BCRYPT_ROUNDS = 12;
+
+/** Dummy hash so login timing is identical whether or not the email exists. */
+const DUMMY_HASH = bcrypt.hashSync("timing-equalizer-dummy-password", BCRYPT_ROUNDS);
+
+const emailSchema = z.string().trim().toLowerCase().email().max(255);
+
+const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128, "Password is too long")
+  .refine((p) => /[a-zA-Z]/.test(p) && /[0-9]/.test(p), {
+    message: "Password must contain at least one letter and one number",
+  });
+
+const nameSchema = z.string().trim().min(1).max(255);
 
 function slugify(name: string): string {
   return name
@@ -24,54 +43,66 @@ async function uniqueUsername(base: string): Promise<string> {
   }
 }
 
+const registerSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  name: nameSchema,
+  university: z.string().trim().min(1, "Please select your university").max(255),
+});
+
 /** POST /api/auth/register */
-authRouter.post("/register", async (req, res) => {
-  const { email, password, name, university } = req.body;
-
-  if (!email || !password || !name) {
-    res.status(400).json({ error: "email, password, and name are required" });
+authRouter.post("/register", authRateLimit, async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
     return;
   }
-
-  if (password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
-    return;
-  }
+  const { email, password, name, university } = parsed.data;
 
   try {
-    const existing = await query(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase()]);
+    const uniOk = await query(
+      `SELECT id FROM universities WHERE name = $1 AND status = 'active' LIMIT 1`,
+      [university],
+    );
+    if (!uniOk.rowCount) {
+      res.status(400).json({
+        error: "Please choose a university from the list. Ask your admin to add your school if it is missing.",
+      });
+      return;
+    }
+
+    const existing = await query(`SELECT id FROM users WHERE email = $1`, [email]);
     if (existing.rowCount && existing.rowCount > 0) {
       res.status(409).json({ error: "Email already registered" });
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const userResult = await query<{ id: string }>(
       `INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'student') RETURNING id`,
-      [email.toLowerCase(), passwordHash],
+      [email, passwordHash],
     );
 
     const userId = userResult.rows[0].id;
     const username = await uniqueUsername(slugify(name));
 
     const studentResult = await query<{ id: string }>(
-      `INSERT INTO students (user_id, username, name, university)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [userId, username, name, university ?? ""],
+      `INSERT INTO students (user_id, username, name, university, status)
+       VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
+      [userId, username, name, university],
     );
 
-    const token = signToken({
-      userId,
-      email: email.toLowerCase(),
-      role: "student",
-      studentId: studentResult.rows[0].id,
-    });
-
+    // No session token — admin must approve before the student can sign in.
     res.status(201).json({
-      token,
-      user: { id: userId, email: email.toLowerCase(), role: "student" },
+      pendingApproval: true,
+      message:
+        "Registration submitted. An administrator must approve your account before you can sign in.",
+      user: { id: userId, email, role: "student" },
       student: { id: studentResult.rows[0].id, username },
     });
+
+    const { notifyAdminNewRegistration } = await import("../services/email.service.js");
+    notifyAdminNewRegistration({ name, email, university });
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).json({ error: "Registration failed" });
@@ -79,10 +110,10 @@ authRouter.post("/register", async (req, res) => {
 });
 
 /** POST /api/auth/login */
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", authRateLimit, async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     res.status(400).json({ error: "email and password are required" });
     return;
   }
@@ -91,20 +122,23 @@ authRouter.post("/login", async (req, res) => {
     const userResult = await query<{
       id: string;
       email: string;
-      password_hash: string;
+      password_hash: string | null;
       role: "student" | "admin";
     }>(`SELECT id, email, password_hash, role FROM users WHERE email = $1`, [
-      email.toLowerCase(),
+      email.toLowerCase().trim(),
     ]);
 
+    // Always run bcrypt so response timing doesn't reveal whether the email exists
     if (!userResult.rowCount) {
+      await bcrypt.compare(password, DUMMY_HASH);
       res.status(401).json({ error: "Invalid email or password" });
       return;
     }
 
     const user = userResult.rows[0];
     if (!user.password_hash) {
-      res.status(401).json({ error: "This account uses Google Sign-In. Please continue with Google." });
+      await bcrypt.compare(password, DUMMY_HASH);
+      res.status(401).json({ error: "Invalid email or password" });
       return;
     }
     const valid = await bcrypt.compare(password, user.password_hash);
@@ -115,11 +149,28 @@ authRouter.post("/login", async (req, res) => {
 
     let studentId: string | undefined;
     if (user.role === "student") {
-      const studentResult = await query<{ id: string }>(
-        `SELECT id FROM students WHERE user_id = $1`,
+      const studentResult = await query<{ id: string; status: string }>(
+        `SELECT id, status FROM students WHERE user_id = $1`,
         [user.id],
       );
-      studentId = studentResult.rows[0]?.id;
+      const student = studentResult.rows[0];
+      if (!student) {
+        res.status(403).json({ error: "Student profile not found" });
+        return;
+      }
+      if (student.status === "pending") {
+        res.status(403).json({
+          error: "Your account is pending admin approval. Please wait to be approved.",
+        });
+        return;
+      }
+      if (student.status === "inactive") {
+        res.status(403).json({
+          error: "Your account was declined or deactivated. Contact your administrator.",
+        });
+        return;
+      }
+      studentId = student.id;
     }
 
     const token = signToken({
@@ -141,7 +192,7 @@ authRouter.post("/login", async (req, res) => {
 });
 
 /** POST /api/auth/google — Sign in with Google ID token */
-authRouter.post("/google", async (req, res) => {
+authRouter.post("/google", sensitiveRateLimit, async (req, res) => {
   const { credential } = req.body;
 
   if (!credential) {
@@ -216,10 +267,19 @@ authRouter.post("/google", async (req, res) => {
 });
 
 /** POST /api/auth/google/claim — Match legal name to pre-registered student */
-authRouter.post("/google/claim", async (req, res) => {
+authRouter.post("/google/claim", authRateLimit, async (req, res) => {
   const { claimToken, firstName, lastName } = req.body;
 
-  if (!claimToken || !firstName || !lastName) {
+  if (
+    typeof claimToken !== "string" ||
+    typeof firstName !== "string" ||
+    typeof lastName !== "string" ||
+    !claimToken ||
+    !firstName.trim() ||
+    !lastName.trim() ||
+    firstName.length > 100 ||
+    lastName.length > 100
+  ) {
     res.status(400).json({ error: "claimToken, firstName, and lastName are required" });
     return;
   }
@@ -302,7 +362,7 @@ authRouter.post("/google/claim", async (req, res) => {
 });
 
 /** POST /api/auth/supabase/sync — link Supabase Auth user to app account */
-authRouter.post("/supabase/sync", async (req, res) => {
+authRouter.post("/supabase/sync", sensitiveRateLimit, async (req, res) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Supabase access token required" });
@@ -372,7 +432,7 @@ authRouter.post("/supabase/sync", async (req, res) => {
 });
 
 /** POST /api/auth/supabase/claim — match legal name after Supabase Google sign-in */
-authRouter.post("/supabase/claim", async (req, res) => {
+authRouter.post("/supabase/claim", authRateLimit, async (req, res) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Supabase access token required" });
@@ -380,7 +440,14 @@ authRouter.post("/supabase/claim", async (req, res) => {
   }
 
   const { firstName, lastName } = req.body;
-  if (!firstName || !lastName) {
+  if (
+    typeof firstName !== "string" ||
+    typeof lastName !== "string" ||
+    !firstName.trim() ||
+    !lastName.trim() ||
+    firstName.length > 100 ||
+    lastName.length > 100
+  ) {
     res.status(400).json({ error: "firstName and lastName are required" });
     return;
   }
@@ -408,7 +475,10 @@ authRouter.post("/supabase/claim", async (req, res) => {
     );
 
     if (!studentResult.rowCount) {
-      res.status(404).json({ error: "No matching student record found for that name" });
+      res.status(404).json({
+        error:
+          "Your admin hasn't added your profile yet. Please contact your admin or email us.",
+      });
       return;
     }
 
@@ -460,16 +530,17 @@ authRouter.post("/supabase/claim", async (req, res) => {
 });
 
 /** POST /api/auth/change-password */
-authRouter.post("/change-password", requireAuth, async (req: AuthRequest, res) => {
+authRouter.post("/change-password", authRateLimit, requireAuth, async (req: AuthRequest, res) => {
   const { currentPassword, newPassword } = req.body;
 
-  if (!currentPassword || !newPassword) {
+  if (typeof currentPassword !== "string" || typeof newPassword !== "string" || !currentPassword) {
     res.status(400).json({ error: "currentPassword and newPassword are required" });
     return;
   }
 
-  if (newPassword.length < 6) {
-    res.status(400).json({ error: "New password must be at least 6 characters" });
+  const passwordCheck = passwordSchema.safeParse(newPassword);
+  if (!passwordCheck.success) {
+    res.status(400).json({ error: passwordCheck.error.issues[0]?.message ?? "Weak password" });
     return;
   }
 
@@ -498,7 +569,7 @@ authRouter.post("/change-password", requireAuth, async (req: AuthRequest, res) =
       return;
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [
       passwordHash,
       req.user!.userId,

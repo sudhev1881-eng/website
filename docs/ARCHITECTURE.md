@@ -16,6 +16,6 @@ See:
 | PostgreSQL | Supabase |
 | Auth (Google OAuth) | Supabase Auth |
 | File uploads | Supabase Storage |
-| Email | Resend |
+| Email | MailerSend |
 
 No local server, home PC, USB NFC reader, or on-disk file storage in production.

@@ -12,6 +12,7 @@ import { profilesRouter } from "./routes/profiles.js";
 import { adminRouter } from "./routes/admin.js";
 import { nfcRouter } from "./routes/nfc.js";
 import { uploadsRouter } from "./routes/uploads.js";
+import { universitiesRouter } from "./routes/universities.js";
 import { ensureStorageReady } from "./services/storage.js";
 import { getPool } from "./db/pool.js";
 
@@ -26,13 +27,14 @@ try {
 }
 
 applySecurityMiddleware(app);
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "256kb" }));
 
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/students", studentsRouter);
 app.use("/api/students", uploadsRouter);
 app.use("/api/profiles", profilesRouter);
+app.use("/api/universities", universitiesRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/nfc", nfcRouter);
 
@@ -53,7 +55,10 @@ async function start() {
     logger.info("Supabase Storage ready");
   } catch (err) {
     logger.error("Supabase Storage init failed", { message: (err as Error).message });
-    process.exit(1);
+    if (env.NODE_ENV === "production") {
+      process.exit(1);
+    }
+    logger.warn("Continuing without storage — check SUPABASE_SERVICE_ROLE_KEY and create the studentlink bucket");
   }
 
   if (env.NFC_CLOUD_MODE) {

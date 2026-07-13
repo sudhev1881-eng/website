@@ -125,7 +125,7 @@ export function AdminUniversities() {
     <div>
       <PageHeader
         title="Universities"
-        description="Manage partner universities and their administrators."
+        description="Add colleges here first (Harvard, Stanford, etc.). Students pick from this list when they register."
         actions={
           <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
             <Plus className="h-4 w-4" />

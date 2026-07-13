@@ -24,6 +24,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
           ref={ref}
           className={classes}
           whileHover={cardHover}
+          {...(props as React.ComponentProps<typeof motion.div>)}
         >
           {children}
         </motion.div>

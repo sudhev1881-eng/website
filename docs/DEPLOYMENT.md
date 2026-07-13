@@ -7,7 +7,7 @@ Deploy StudentLink to **Vercel** (frontend), **Oracle Cloud** (API), and **Supab
 - GitHub repository connected to Vercel
 - Oracle Cloud Always Free ARM instance (Oracle Linux)
 - Supabase project
-- Resend account (optional, for email)
+- MailerSend account (optional, for email)
 - Domain with DNS access
 
 ---
@@ -105,7 +105,7 @@ Update `nginx/conf.d/api.conf` with your domain.
 - [ ] `JWT_SECRET` — 32+ random characters
 - [ ] `SITE_URL`, `CORS_ORIGIN`, `API_PUBLIC_URL`
 - [ ] `TRUST_PROXY=true`
-- [ ] `RESEND_API_KEY` (optional)
+- [ ] `MAILERSEND_API_KEY` (optional)
 
 ### Frontend (Vercel)
 - [ ] All `NEXT_PUBLIC_*` variables set

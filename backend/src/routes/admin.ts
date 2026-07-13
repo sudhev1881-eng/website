@@ -199,6 +199,101 @@ adminRouter.patch("/students/:id", async (req, res) => {
   }
 });
 
+/** POST /api/admin/students/:id/approve — activate a self-registered student */
+adminRouter.post("/students/:id/approve", async (req, res) => {
+  try {
+    const result = await query<{
+      id: string;
+      name: string;
+      username: string;
+      university: string;
+      major: string;
+      status: string;
+      profile_views: number;
+      created_at: Date;
+      email: string | null;
+    }>(
+      `UPDATE students s
+       SET status = 'active', updated_at = NOW()
+       FROM users u
+       WHERE s.id = $1 AND s.user_id = u.id AND s.status = 'pending'
+       RETURNING s.id, s.name, s.username, s.university, s.major, s.status,
+                 s.profile_views, s.created_at, u.email`,
+      [req.params.id],
+    );
+
+    if (!result.rowCount) {
+      res.status(404).json({ error: "Pending registration not found" });
+      return;
+    }
+
+    const s = result.rows[0];
+    const nfc = await query<{ card_number: string }>(
+      `SELECT card_number FROM nfc_cards WHERE student_id = $1 AND status = 'active' LIMIT 1`,
+      [s.id],
+    );
+
+    res.json({
+      id: s.id,
+      name: s.name,
+      username: s.username,
+      email: s.email,
+      university: s.university,
+      major: s.major,
+      status: s.status,
+      nfcCard: nfc.rows[0]?.card_number ?? null,
+      profileViews: s.profile_views,
+      joinedAt: s.created_at.toISOString().split("T")[0],
+    });
+
+    if (s.email) {
+      const { notifyStudentApproved } = await import("../services/email.service.js");
+      notifyStudentApproved({ name: s.name, email: s.email });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "Failed to approve student" });
+  }
+});
+
+/** POST /api/admin/students/:id/decline — reject and remove a pending registration */
+adminRouter.post("/students/:id/decline", async (req, res) => {
+  try {
+    const student = await query<{
+      user_id: string | null;
+      status: string;
+      name: string;
+      email: string | null;
+    }>(
+      `SELECT s.user_id, s.status, s.name, u.email
+       FROM students s
+       LEFT JOIN users u ON u.id = s.user_id
+       WHERE s.id = $1`,
+      [req.params.id],
+    );
+    if (!student.rowCount) {
+      res.status(404).json({ error: "Student not found" });
+      return;
+    }
+    const row = student.rows[0];
+    if (row.status !== "pending" || !row.user_id) {
+      res.status(400).json({
+        error: "Only pending self-registrations can be declined this way",
+      });
+      return;
+    }
+
+    await query(`DELETE FROM users WHERE id = $1`, [row.user_id]);
+    res.json({ success: true });
+
+    if (row.email) {
+      const { notifyStudentDeclined } = await import("../services/email.service.js");
+      notifyStudentDeclined({ name: row.name, email: row.email });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "Failed to decline student" });
+  }
+});
+
 /** DELETE /api/admin/students/:id */
 adminRouter.delete("/students/:id", async (req, res) => {
   try {

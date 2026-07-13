@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 interface GlassPillProps {
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   as?: "div" | "nav";
 }
