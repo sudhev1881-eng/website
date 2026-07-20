@@ -22,6 +22,25 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   return getPool().query<T>(text, params);
 }
 
+/** Run work inside a single DB transaction. */
+export async function withTransaction<T>(
+  fn: (q: typeof query) => Promise<T>,
+): Promise<T> {
+  const client = await getPool().connect();
+  const txQuery: typeof query = (text, params) => client.query(text, params);
+  try {
+    await client.query("BEGIN");
+    const result = await fn(txQuery);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closePool(): Promise<void> {
   if (pool) {
     await pool.end();

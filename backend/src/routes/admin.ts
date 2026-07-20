@@ -1,8 +1,26 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
-import { query } from "../db/pool.js";
+import { query, withTransaction } from "../db/pool.js";
 import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/supabase-auth.js";
 import { getStorageStats } from "../services/storage.js";
+
+/** Remove a student row and its linked login user (if any) in one transaction. */
+async function deleteStudentAndUser(studentId: string): Promise<boolean> {
+  return withTransaction(async (q) => {
+    const student = await q<{ id: string; user_id: string | null }>(
+      `SELECT id, user_id FROM students WHERE id = $1 FOR UPDATE`,
+      [studentId],
+    );
+    if (!student.rowCount) return false;
+
+    const userId = student.rows[0].user_id;
+    await q(`DELETE FROM students WHERE id = $1`, [studentId]);
+    if (userId) {
+      await q(`DELETE FROM users WHERE id = $1`, [userId]);
+    }
+    return true;
+  });
+}
 
 export const adminRouter = Router();
 
@@ -68,33 +86,50 @@ adminRouter.post("/students", async (req, res) => {
   }
 
   try {
-    const existing = await query(`SELECT id FROM users WHERE email = $1`, [email.toLowerCase()]);
-    if (existing.rowCount && existing.rowCount > 0) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const passwordHash = await bcrypt.hash(password, 10);
+    const username = await uniqueUsername(slugify(name));
+
+    const created = await withTransaction(async (q) => {
+      await q(
+        `DELETE FROM users u
+         WHERE lower(u.email) = $1
+           AND u.role = 'student'
+           AND NOT EXISTS (SELECT 1 FROM students s WHERE s.user_id = u.id)`,
+        [normalizedEmail],
+      );
+
+      const existing = await q(`SELECT id FROM users WHERE lower(email) = $1`, [normalizedEmail]);
+      if (existing.rowCount && existing.rowCount > 0) {
+        return { conflict: true as const };
+      }
+
+      const userResult = await q<{ id: string }>(
+        `INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'student') RETURNING id`,
+        [normalizedEmail, passwordHash],
+      );
+
+      const userId = userResult.rows[0].id;
+      const studentResult = await q(
+        `INSERT INTO students (user_id, username, name, university, major, status)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [userId, username, name, university ?? "", major ?? "", status ?? "pending"],
+      );
+
+      return { conflict: false as const, student: studentResult.rows[0], email: normalizedEmail };
+    });
+
+    if (created.conflict) {
       res.status(409).json({ error: "Email already registered" });
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
-    const userResult = await query<{ id: string }>(
-      `INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'student') RETURNING id`,
-      [email.toLowerCase(), passwordHash],
-    );
-
-    const userId = userResult.rows[0].id;
-    const username = await uniqueUsername(slugify(name));
-
-    const studentResult = await query(
-      `INSERT INTO students (user_id, username, name, university, major, status)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [userId, username, name, university ?? "", major ?? "", status ?? "pending"],
-    );
-
-    const s = studentResult.rows[0];
+    const s = created.student;
     res.status(201).json({
       id: s.id,
       name: s.name,
       username: s.username,
-      email: email.toLowerCase(),
+      email: created.email,
       university: s.university,
       major: s.major,
       status: s.status,
@@ -282,7 +317,11 @@ adminRouter.post("/students/:id/decline", async (req, res) => {
       return;
     }
 
-    await query(`DELETE FROM users WHERE id = $1`, [row.user_id]);
+    const removed = await deleteStudentAndUser(req.params.id);
+    if (!removed) {
+      res.status(404).json({ error: "Student not found" });
+      return;
+    }
     res.json({ success: true });
 
     if (row.email) {
@@ -290,6 +329,7 @@ adminRouter.post("/students/:id/decline", async (req, res) => {
       notifyStudentDeclined({ name: row.name, email: row.email });
     }
   } catch (err) {
+    console.error("Decline student error:", err);
     res.status(500).json({ error: "Failed to decline student" });
   }
 });
@@ -297,23 +337,14 @@ adminRouter.post("/students/:id/decline", async (req, res) => {
 /** DELETE /api/admin/students/:id */
 adminRouter.delete("/students/:id", async (req, res) => {
   try {
-    const student = await query<{ user_id: string | null }>(
-      `SELECT user_id FROM students WHERE id = $1`,
-      [req.params.id],
-    );
-    if (!student.rowCount) {
+    const removed = await deleteStudentAndUser(req.params.id);
+    if (!removed) {
       res.status(404).json({ error: "Student not found" });
       return;
     }
-
-    const userId = student.rows[0].user_id;
-    if (userId) {
-      await query(`DELETE FROM users WHERE id = $1`, [userId]);
-    } else {
-      await query(`DELETE FROM students WHERE id = $1`, [req.params.id]);
-    }
     res.json({ success: true });
   } catch (err) {
+    console.error("Delete student error:", err);
     res.status(500).json({ error: "Failed to delete student" });
   }
 });

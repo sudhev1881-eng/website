@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { query } from "../db/pool.js";
+import { query, withTransaction } from "../db/pool.js";
 import { signToken, signClaimToken, verifyClaimToken, type AuthRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/supabase-auth.js";
 import { authRateLimit, sensitiveRateLimit } from "../middleware/security.js";
@@ -71,34 +71,59 @@ authRouter.post("/register", authRateLimit, async (req, res) => {
       return;
     }
 
-    const existing = await query(`SELECT id FROM users WHERE email = $1`, [email]);
-    if (existing.rowCount && existing.rowCount > 0) {
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const username = await uniqueUsername(slugify(name));
+
+    const created = await withTransaction(async (q) => {
+      // Drop orphan login rows left behind by a partial delete (user with no student).
+      await q(
+        `DELETE FROM users u
+         WHERE lower(u.email) = $1
+           AND u.role = 'student'
+           AND NOT EXISTS (SELECT 1 FROM students s WHERE s.user_id = u.id)`,
+        [email],
+      );
+
+      const existing = await q<{ id: string }>(
+        `SELECT id FROM users WHERE lower(email) = $1`,
+        [email],
+      );
+      if (existing.rowCount && existing.rowCount > 0) {
+        return { conflict: true as const };
+      }
+
+      const userResult = await q<{ id: string }>(
+        `INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'student') RETURNING id`,
+        [email, passwordHash],
+      );
+
+      const userId = userResult.rows[0].id;
+      const studentResult = await q<{ id: string }>(
+        `INSERT INTO students (user_id, username, name, university, status)
+         VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
+        [userId, username, name, university],
+      );
+
+      return {
+        conflict: false as const,
+        userId,
+        studentId: studentResult.rows[0].id,
+        username,
+      };
+    });
+
+    if (created.conflict) {
       res.status(409).json({ error: "Email already registered" });
       return;
     }
-
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const userResult = await query<{ id: string }>(
-      `INSERT INTO users (email, password_hash, role) VALUES ($1, $2, 'student') RETURNING id`,
-      [email, passwordHash],
-    );
-
-    const userId = userResult.rows[0].id;
-    const username = await uniqueUsername(slugify(name));
-
-    const studentResult = await query<{ id: string }>(
-      `INSERT INTO students (user_id, username, name, university, status)
-       VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
-      [userId, username, name, university],
-    );
 
     // No session token — admin must approve before the student can sign in.
     res.status(201).json({
       pendingApproval: true,
       message:
         "Registration submitted. An administrator must approve your account before you can sign in.",
-      user: { id: userId, email, role: "student" },
-      student: { id: studentResult.rows[0].id, username },
+      user: { id: created.userId, email, role: "student" },
+      student: { id: created.studentId, username: created.username },
     });
 
     const { notifyAdminNewRegistration } = await import("../services/email.service.js");

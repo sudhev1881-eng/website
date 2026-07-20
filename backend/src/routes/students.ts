@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { query } from "../db/pool.js";
+import { query, withTransaction } from "../db/pool.js";
 import { requireAuth, requireStudent, type AuthRequest } from "../middleware/supabase-auth.js";
 import { getStudentAnalytics } from "../services/analytics.js";
 
@@ -406,7 +406,11 @@ studentsRouter.post("/me/nfc/replacement-request", async (req: AuthRequest, res)
 /** DELETE /api/students/me — delete own account */
 studentsRouter.delete("/me", async (req: AuthRequest, res) => {
   try {
-    await query(`DELETE FROM users WHERE id = $1`, [req.user!.userId]);
+    const userId = req.user!.userId;
+    await withTransaction(async (q) => {
+      await q(`DELETE FROM students WHERE user_id = $1`, [userId]);
+      await q(`DELETE FROM users WHERE id = $1`, [userId]);
+    });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete account" });
