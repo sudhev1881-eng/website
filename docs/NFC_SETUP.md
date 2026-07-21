@@ -1,6 +1,8 @@
 # NFC Reader Setup (Ubuntu Server)
 
-StudentLink programs NFC cards from the **browser admin dashboard**, but the USB reader must be connected to the **Ubuntu server** running the API — not the administrator's laptop.
+> **Preferred for cloud deployments:** program cards from Android Chrome using Web NFC — see [WEB_NFC.md](./WEB_NFC.md). No USB reader required.
+
+StudentLink can also program NFC cards via a **USB reader on the Ubuntu server** (legacy / on-prem). In that path the reader is attached to the API host — not the administrator's laptop.
 
 ## Supported hardware
 

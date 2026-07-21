@@ -18,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
-import { ProgramNfcCardDialog } from "./ProgramNfcCardDialog";
+import { NFCWriterModal } from "@/components/nfc/NFCWriterModal";
 import { SetupError, DB_SETUP_STEPS } from "@/components/layout/SetupError";
 import { UniversitySelect } from "@/components/ui/university-select";
 import { api, ApiError, type AdminStudent } from "@/lib/api";
@@ -35,7 +35,7 @@ export function AdminStudents() {
   const [loading, setLoading] = React.useState(true);
   const [fetchError, setFetchError] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
-  const [programStudent, setProgramStudent] = React.useState<AdminStudent | null>(null);
+  const [writeNfcStudent, setWriteNfcStudent] = React.useState<AdminStudent | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
   const [preregisterOpen, setPreregisterOpen] = React.useState(false);
   const [editStudent, setEditStudent] = React.useState<AdminStudent | null>(null);
@@ -225,7 +225,7 @@ export function AdminStudents() {
         description={
           pendingCount > 0
             ? `${pendingCount} registration${pendingCount === 1 ? "" : "s"} waiting for approval.`
-            : "Manage students, approve registrations, and assign NFC profile URLs."
+            : "Manage students, approve registrations, and write NFC cards from Android Chrome."
         }
         actions={
           <div className="flex flex-wrap gap-2">
@@ -328,10 +328,12 @@ export function AdminStudents() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setProgramStudent(student)}
-                                title="Assign NFC URL"
+                                onClick={() => setWriteNfcStudent(student)}
+                                title="Write NFC Card (Android Chrome)"
+                                aria-label="Write NFC Card"
                               >
                                 <Nfc className="h-4 w-4" />
+                                <span className="hidden lg:inline">Write NFC</span>
                               </Button>
                               <Button
                                 variant="ghost"
@@ -362,15 +364,19 @@ export function AdminStudents() {
         </CardContent>
       </Card>
 
-      {programStudent ? (
-        <ProgramNfcCardDialog
-          open={Boolean(programStudent)}
-          onOpenChange={(open) => !open && setProgramStudent(null)}
+      {writeNfcStudent ? (
+        <NFCWriterModal
+          open={Boolean(writeNfcStudent)}
+          onOpenChange={(open) => !open && setWriteNfcStudent(null)}
           student={{
-            id: programStudent.id,
-            name: programStudent.name,
-            slug: programStudent.username,
-            cardNumber: programStudent.nfcCard,
+            id: writeNfcStudent.id,
+            name: writeNfcStudent.name,
+            username: writeNfcStudent.username,
+            cardNumber: writeNfcStudent.nfcCard,
+          }}
+          onProgrammed={() => {
+            loadStudents();
+            setWriteNfcStudent(null);
           }}
         />
       ) : null}

@@ -67,7 +67,8 @@ export function AdminSettings() {
               NFC (Cloud Mode)
             </CardTitle>
             <CardDescription>
-              Profile URLs are registered in the database. Physical NFC tags are programmed externally with the generated URL.
+              On Android Chrome, admins can write profile URLs to NTAG cards from Students → Write NFC
+              (Web NFC). Tags can also be programmed externally with the same URL, or shared as QR codes.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

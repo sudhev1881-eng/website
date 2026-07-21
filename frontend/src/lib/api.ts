@@ -533,5 +533,23 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+
+    /** Persist Web NFC write after client-side verify (admin only). */
+    markProgrammed: (payload: {
+      studentId: string;
+      studentSlug: string;
+      urlWritten: string;
+      cardUid?: string | null;
+      cardNumber?: string | null;
+      verified: boolean;
+    }) =>
+      request<NfcProgramResult & {
+        status?: string;
+        programmedAt?: string;
+        programmedBy?: string | null;
+      }>("/nfc/mark-programmed", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
   },
 };

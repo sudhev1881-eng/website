@@ -53,7 +53,7 @@ All uploads (resumes, avatars, covers) go to **Supabase Storage**. The Oracle se
 
 ## NFC (cloud mode)
 
-Physical USB readers are **not** attached to the cloud VM. Admin assigns profile URLs in the database. Universities program blank NFC tags externally with the same URL, or distribute QR codes.
+Physical USB readers are **not** attached to the cloud VM. Admins can program NTAG cards directly from the dashboard on **Android Chrome** via Web NFC (see [WEB_NFC.md](./WEB_NFC.md)). Alternatively, assign profile URLs in the database and program tags externally / distribute QR codes.
 
 ## Security
 
