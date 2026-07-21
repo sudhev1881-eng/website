@@ -42,6 +42,45 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => v !== "false"),
+  /** When false or unset, Telegram bot does not start. */
+  TELEGRAM_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
+  TELEGRAM_BOT_TOKEN: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  /** Shared secret for webhook URL path / header verification. */
+  TELEGRAM_WEBHOOK_SECRET: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  /** webhook (production/Render) or polling (local/dev). */
+  TELEGRAM_MODE: z.enum(["webhook", "polling"]).optional(),
+  TELEGRAM_WEBHOOK_PATH: z.string().default("/api/telegram/webhook"),
+  /** Comma-separated Telegram user IDs allowed to bootstrap as super_admin. */
+  TELEGRAM_SUPER_ADMIN_IDS: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v && v.trim()
+        ? v
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean)
+            .map((id) => Number(id))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        : [],
+    ),
+  TELEGRAM_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+  TELEGRAM_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  /** Optional — enables LLM-assisted NL parsing when set. Core commands work without it. */
+  OPENAI_API_KEY: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
 });
 
 export type Env = z.infer<typeof envSchema>;

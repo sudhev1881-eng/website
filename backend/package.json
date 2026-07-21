@@ -12,7 +12,9 @@
     "db:reset": "tsx db/reset.ts",
     "db:setup": "npm run db:migrate && npm run db:seed",
     "db:pull": "prisma db pull",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test": "tsx --test \"src/**/*.test.ts\"",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@prisma/client": "^7.8.0",
@@ -24,11 +26,13 @@
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "google-auth-library": "^10.9.0",
+    "grammy": "^1.45.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mailersend": "^2.6.0",
     "multer": "^2.2.0",
     "pg": "^8.13.1",
+    "xlsx": "^0.18.5",
     "zod": "^3.24.4"
   },
   "devDependencies": {

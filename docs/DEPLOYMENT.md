@@ -94,6 +94,33 @@ Or: **New → Blueprint** → select this repo (uses `render.yaml`).
 | `SITE_URL` | Vercel URL |
 | `CORS_ORIGIN` | Vercel URL |
 | `API_PUBLIC_URL` | Render service URL |
+| `TELEGRAM_ENABLED` | `true` to start the Admin Assistant bot |
+| `TELEGRAM_BOT_TOKEN` | From [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_WEBHOOK_SECRET` | Random secret; webhook URL becomes `/api/telegram/webhook/<secret>` |
+| `TELEGRAM_MODE` | `webhook` on Render (default in production) |
+| `TELEGRAM_SUPER_ADMIN_IDS` | Optional bootstrap Telegram user IDs (comma-separated) |
+| `OPENAI_API_KEY` | Optional — NL assist only; commands work offline without it |
+
+#### Telegram Admin Assistant setup
+1. Run migrations (`npm run db:migrate`) so `telegram_*` tables exist.
+2. Create a bot with BotFather; set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ENABLED=true`.
+3. Link your Telegram account to a StudentLink admin (pick one):
+
+```sql
+INSERT INTO telegram_admins (telegram_user_id, user_id, permission_level, is_active)
+SELECT 123456789, id, 'super_admin', TRUE
+FROM users
+WHERE role = 'admin' AND lower(email) = lower('you@yourdomain.com')
+ON CONFLICT (telegram_user_id) DO UPDATE
+  SET permission_level = 'super_admin', is_active = TRUE, updated_at = NOW();
+```
+
+Or set `TELEGRAM_SUPER_ADMIN_IDS` to your numeric Telegram user ID (message `@userinfobot` to find it) for first-login bootstrap against an existing admin user.
+
+4. On Render, ensure `API_PUBLIC_URL` is set so the API can register the webhook. Locally use `TELEGRAM_MODE=polling`.
+5. Message the bot `/start` — unauthorized Telegram IDs are rejected immediately.
+
+Permission levels: `super_admin`, `college_admin` (set `college_scope`), `read_only`.
 
 ### Frontend (Vercel)
 - All `NEXT_PUBLIC_*` set

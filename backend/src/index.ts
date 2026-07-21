@@ -15,6 +15,9 @@ import { uploadsRouter } from "./routes/uploads.js";
 import { universitiesRouter } from "./routes/universities.js";
 import { ensureStorageReady } from "./services/storage.js";
 import { getPool } from "./db/pool.js";
+import { startTelegramBot, telegramRouter } from "./telegram/index.js";
+import { registerBotCommands } from "./telegram/telegramCommands.js";
+import { getTelegramBot } from "./telegram/telegramBot.js";
 
 const app = express();
 
@@ -37,6 +40,7 @@ app.use("/api/profiles", profilesRouter);
 app.use("/api/universities", universitiesRouter);
 app.use("/api/admin", adminRouter);
 app.use("/api/nfc", nfcRouter);
+app.use("/api/telegram", telegramRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -63,6 +67,27 @@ async function start() {
 
   if (env.NFC_CLOUD_MODE) {
     logger.info("NFC cloud mode — physical reader disabled; cards managed as profile URLs in database");
+  }
+
+  try {
+    const telegram = await startTelegramBot();
+    if (telegram.mode !== "disabled") {
+      const bot = getTelegramBot();
+      if (bot) {
+        try {
+          await registerBotCommands(bot);
+        } catch (err) {
+          logger.warn("Failed to register Telegram command menu", {
+            message: (err as Error).message,
+          });
+        }
+      }
+      logger.info("Telegram Admin Assistant ready", { mode: telegram.mode });
+    }
+  } catch (err) {
+    logger.error("Telegram bot failed to start — API continues without bot", {
+      message: (err as Error).message,
+    });
   }
 
   const host = "0.0.0.0";
