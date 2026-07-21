@@ -39,14 +39,17 @@ async function handleWebhook(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  // Ack immediately so Telegram does not retry while we process (and so cold starts
-  // that reach this handler still clear last_error_message).
-  res.json({ ok: true });
-
+  // Process BEFORE acking. Early ack + client disconnect was allowing Telegram to
+  // treat delivery as success while our handler never produced a reply (empty
+  // telegram_logs despite HTTP 200). Always 200 afterward to avoid retry storms.
   try {
     await processTelegramUpdate(update, clientIp(req));
   } catch (err) {
     logger.error("Telegram webhook handler failed", { message: (err as Error).message });
+  }
+
+  if (!res.headersSent) {
+    res.json({ ok: true });
   }
 }
 
@@ -60,12 +63,15 @@ telegramRouter.get("/status", (_req, res) => {
   const path = env.TELEGRAM_WEBHOOK_PATH.startsWith("/")
     ? env.TELEGRAM_WEBHOOK_PATH
     : `/${env.TELEGRAM_WEBHOOK_PATH}`;
+  const bot = getTelegramBot();
   res.json({
-    enabled: Boolean(env.TELEGRAM_ENABLED && env.TELEGRAM_BOT_TOKEN && getTelegramBot()),
+    enabled: Boolean(env.TELEGRAM_ENABLED && env.TELEGRAM_BOT_TOKEN && bot),
     mode,
     hasToken: Boolean(env.TELEGRAM_BOT_TOKEN),
     hasPublicUrl: Boolean(env.API_PUBLIC_URL),
     hasWebhookSecret: Boolean(env.TELEGRAM_WEBHOOK_SECRET),
     webhookPath: env.TELEGRAM_WEBHOOK_SECRET ? `${path}/:secret` : path,
+    botUsername: bot?.botInfo?.username ?? null,
+    botInitialized: Boolean(bot?.botInfo?.id),
   });
 });

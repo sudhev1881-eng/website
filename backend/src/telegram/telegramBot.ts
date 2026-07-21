@@ -53,7 +53,7 @@ async function processAuthorizedMessage(
     [from.first_name, from.last_name].filter(Boolean).join(" ") || from.username;
 
   if (!getLimiter().allow(telegramUserId)) {
-    await ctx.reply("⏳ Rate limit exceeded. Please wait a minute and try again.");
+    await safeReply(bot, ctx, "⏳ Rate limit exceeded. Please wait a minute and try again.");
     await logResult({
       telegramUserId,
       adminId: null,
@@ -69,7 +69,7 @@ async function processAuthorizedMessage(
     admin = await authenticateTelegramUser(telegramUserId, displayName);
   } catch (err) {
     if (err instanceof TelegramAuthError) {
-      await ctx.reply("❌ Unauthorized. This bot is for StudentLink admins only.");
+      await safeReply(bot, ctx, "❌ Unauthorized. This bot is for StudentLink admins only.");
       await logResult({
         telegramUserId,
         adminId: null,
@@ -95,7 +95,7 @@ async function processAuthorizedMessage(
         doc.file_name ?? "upload.bin",
         buffer,
       );
-      await ctx.reply(truncate(reply), { parse_mode: "HTML" });
+      await safeReply(bot, ctx, truncate(reply), { parse_mode: "HTML" });
       await logResult({
         telegramUserId,
         adminId: admin.id,
@@ -106,7 +106,7 @@ async function processAuthorizedMessage(
       });
     } catch (err) {
       const message = (err as Error).message;
-      await ctx.reply(formatError(message), { parse_mode: "HTML" });
+      await safeReply(bot, ctx, formatError(message), { parse_mode: "HTML" });
       await logResult({
         telegramUserId,
         adminId: admin.id,
@@ -121,7 +121,7 @@ async function processAuthorizedMessage(
 
   const text = ctx.message?.text?.trim() ?? ctx.message?.caption?.trim() ?? "";
   if (!text) {
-    await ctx.reply(helpText(admin), { parse_mode: "HTML" });
+    await safeReply(bot, ctx, helpText(admin), { parse_mode: "HTML" });
     return;
   }
 
@@ -143,7 +143,7 @@ async function processAuthorizedMessage(
 
   try {
     const reply = await handleIntent({ admin, telegramUserId, ipAddress, text }, intent);
-    await ctx.reply(truncate(reply), { parse_mode: "HTML" });
+    await safeReply(bot, ctx, truncate(reply), { parse_mode: "HTML" });
     await logResult({
       telegramUserId,
       adminId: admin.id,
@@ -154,7 +154,7 @@ async function processAuthorizedMessage(
   } catch (err) {
     const message =
       err instanceof TelegramAuthError ? err.message : (err as Error).message || "Request failed";
-    await ctx.reply(formatError(message), { parse_mode: "HTML" });
+    await safeReply(bot, ctx, formatError(message), { parse_mode: "HTML" });
     await logResult({
       telegramUserId,
       adminId: admin.id,
@@ -164,6 +164,25 @@ async function processAuthorizedMessage(
       ipAddress,
     });
   }
+}
+
+async function safeReply(
+  bot: Bot,
+  ctx: Context,
+  text: string,
+  extra?: { parse_mode?: "HTML" | "Markdown" | "MarkdownV2" },
+): Promise<void> {
+  try {
+    await ctx.reply(text, extra);
+    return;
+  } catch (err) {
+    logger.warn("ctx.reply failed; falling back to sendMessage", {
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+  const chatId = ctx.chat?.id ?? ctx.from?.id;
+  if (chatId == null) return;
+  await bot.api.sendMessage(chatId, text, extra);
 }
 
 function createBot(token: string): Bot {
@@ -183,18 +202,17 @@ function createBot(token: string): Bot {
         message: err instanceof Error ? err.message : String(err),
       });
       try {
-        await ctx.reply("❌ Something went wrong. Please try again in a moment.");
+        await safeReply(bot, ctx, "❌ Something went wrong. Please try again in a moment.");
       } catch {
         // ignore reply failures (e.g. chat not found on synthetic updates)
       }
     }
   };
 
-  bot.command("start", run);
-  bot.on("message", async (ctx) => {
-    if (ctx.message?.text?.startsWith("/start")) return;
-    await run(ctx);
-  });
+  // Single message pipeline — do NOT register bot.command("start") separately with an
+  // early-return skip on message:/start. Without bot.init(), grammy command filters that
+  // touch ctx.me can throw and the skip path then drops /start with zero reply.
+  bot.on("message", run);
 
   return bot;
 }
@@ -207,9 +225,19 @@ export async function processTelegramUpdate(
   update: Update,
   ipAddress?: string | null,
 ): Promise<void> {
-  if (!botSingleton) return;
+  if (!botSingleton) {
+    logger.warn("processTelegramUpdate skipped — bot not started");
+    return;
+  }
   const previous = currentRequestIp;
   currentRequestIp = ipAddress ?? null;
+  const message = "message" in update ? update.message : undefined;
+  logger.info("Telegram update received", {
+    updateId: update.update_id,
+    telegramUserId: message && "from" in message ? message.from?.id : undefined,
+    text: message && "text" in message ? message.text?.slice(0, 80) : undefined,
+    hasDocument: Boolean(message && "document" in message && message.document),
+  });
   try {
     await botSingleton.handleUpdate(update);
   } finally {
@@ -234,6 +262,19 @@ export async function startTelegramBot(): Promise<{
   }
 
   botSingleton = createBot(env.TELEGRAM_BOT_TOKEN);
+
+  // Required for webhook mode: command filters and ctx.me need botInfo loaded.
+  // bot.start() does this for polling; handleUpdate does not.
+  try {
+    await botSingleton.init();
+    logger.info("Telegram bot initialized", {
+      username: botSingleton.botInfo.username,
+      id: botSingleton.botInfo.id,
+    });
+  } catch (err) {
+    logger.error("Telegram bot.init() failed", { message: (err as Error).message });
+    throw err;
+  }
 
   const mode =
     env.TELEGRAM_MODE ?? (env.NODE_ENV === "production" ? "webhook" : "polling");
@@ -260,12 +301,13 @@ export async function startTelegramBot(): Promise<{
     const webhookUrl = secret ? `${publicUrl}${path}/${secret}` : `${publicUrl}${path}`;
     try {
       await botSingleton.api.setWebhook(webhookUrl, {
-        drop_pending_updates: false,
+        drop_pending_updates: true,
         allowed_updates: ["message"],
         ...(secret ? { secret_token: secret } : {}),
       });
       logger.info("Telegram webhook registered", {
         path: secret ? `${path}/***` : path,
+        bot: botSingleton.botInfo.username,
       });
     } catch (err) {
       logger.error("Failed to set Telegram webhook", { message: (err as Error).message });
