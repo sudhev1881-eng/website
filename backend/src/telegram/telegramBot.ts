@@ -172,17 +172,36 @@ async function safeReply(
   text: string,
   extra?: { parse_mode?: "HTML" | "Markdown" | "MarkdownV2" },
 ): Promise<void> {
-  try {
-    await ctx.reply(text, extra);
-    return;
-  } catch (err) {
-    logger.warn("ctx.reply failed; falling back to sendMessage", {
-      message: err instanceof Error ? err.message : String(err),
-    });
-  }
   const chatId = ctx.chat?.id ?? ctx.from?.id;
-  if (chatId == null) return;
-  await bot.api.sendMessage(chatId, text, extra);
+  const trySend = async (payload: { parse_mode?: "HTML" | "Markdown" | "MarkdownV2" } | undefined) => {
+    try {
+      if (payload?.parse_mode) await ctx.reply(text, payload);
+      else await ctx.reply(text);
+      return true;
+    } catch (err) {
+      logger.warn("ctx.reply failed; trying sendMessage", {
+        message: err instanceof Error ? err.message : String(err),
+        parseMode: payload?.parse_mode ?? "none",
+      });
+      if (chatId == null) return false;
+      try {
+        if (payload?.parse_mode) await bot.api.sendMessage(chatId, text, payload);
+        else await bot.api.sendMessage(chatId, text);
+        return true;
+      } catch (err2) {
+        logger.warn("sendMessage failed", {
+          message: err2 instanceof Error ? err2.message : String(err2),
+          parseMode: payload?.parse_mode ?? "none",
+        });
+        return false;
+      }
+    }
+  };
+
+  if (await trySend(extra)) return;
+  // HTML/Markdown entity errors must not swallow the reply entirely.
+  if (extra?.parse_mode && (await trySend(undefined))) return;
+  throw new Error("Failed to deliver Telegram reply");
 }
 
 function createBot(token: string): Bot {
