@@ -54,10 +54,14 @@ export async function getStudentAnalytics(studentId: string) {
     ),
   ]);
 
-  const viewsMap = new Map(viewsByDay.rows.map((r) => [r.dow, parseInt(r.views, 10)]));
-  const tapsMap = new Map(tapsByDay.rows.map((r) => [r.dow, parseInt(r.taps, 10)]));
+  const viewsMap = new Map<number, number>(
+    viewsByDay.rows.map((r) => [r.dow, parseInt(r.views, 10)]),
+  );
+  const tapsMap = new Map<number, number>(
+    tapsByDay.rows.map((r) => [r.dow, parseInt(r.taps, 10)]),
+  );
 
-  const counts = new Map(
+  const counts = new Map<string, { current: number; previous: number }>(
     periodCounts.rows.map((r) => [
       r.event_type,
       { current: parseInt(r.current, 10), previous: parseInt(r.previous, 10) },

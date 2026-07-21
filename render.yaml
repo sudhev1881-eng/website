@@ -9,7 +9,8 @@ services:
     plan: free
     region: oregon
     rootDir: backend
-    buildCommand: npm ci && npm run build
+    # --include=dev: NODE_ENV=production would otherwise skip @types/* and typescript
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:

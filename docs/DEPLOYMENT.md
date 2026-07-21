@@ -61,7 +61,7 @@ npm run db:migrate
    - **Name:** `studentlink-api`
    - **Root Directory:** `backend`
    - **Runtime:** Node
-   - **Build Command:** `npm ci && npm run build`
+   - **Build Command:** `npm ci --include=dev && npm run build`
    - **Start Command:** `npm start`
    - **Health Check Path:** `/api/health`
 4. Add the environment variables from the checklist below.
