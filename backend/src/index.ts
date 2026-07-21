@@ -69,6 +69,24 @@ async function start() {
     logger.info("NFC cloud mode — physical reader disabled; cards managed as profile URLs in database");
   }
 
+  // Listen BEFORE registering the Telegram webhook. setWebhook causes Telegram to
+  // POST immediately; if the port is not open yet, Render returns 404 and the bot
+  // appears dead until the next successful delivery.
+  const host = "0.0.0.0";
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(env.PORT, host, () => {
+      logger.info("StudentLink API started", {
+        port: env.PORT,
+        host,
+        cors: env.CORS_ORIGIN,
+        siteUrl: env.SITE_URL,
+        nodeEnv: env.NODE_ENV,
+      });
+      resolve();
+    });
+    server.on("error", reject);
+  });
+
   try {
     const telegram = await startTelegramBot();
     if (telegram.mode !== "disabled") {
@@ -89,17 +107,6 @@ async function start() {
       message: (err as Error).message,
     });
   }
-
-  const host = "0.0.0.0";
-  app.listen(env.PORT, host, () => {
-    logger.info("StudentLink API started", {
-      port: env.PORT,
-      host,
-      cors: env.CORS_ORIGIN,
-      siteUrl: env.SITE_URL,
-      nodeEnv: env.NODE_ENV,
-    });
-  });
 }
 
 start();

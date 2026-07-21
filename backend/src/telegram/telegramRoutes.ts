@@ -39,13 +39,14 @@ async function handleWebhook(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Ack immediately so Telegram does not retry while we process (and so cold starts
+  // that reach this handler still clear last_error_message).
+  res.json({ ok: true });
+
   try {
     await processTelegramUpdate(update, clientIp(req));
-    res.json({ ok: true });
   } catch (err) {
     logger.error("Telegram webhook handler failed", { message: (err as Error).message });
-    // Always 200 to Telegram after accept to avoid retries storms when our logic fails mid-way
-    res.status(200).json({ ok: false });
   }
 }
 
@@ -55,9 +56,16 @@ telegramRouter.post("/webhook/:secret", handleWebhook);
 
 telegramRouter.get("/status", (_req, res) => {
   const env = getEnv();
+  const mode = env.TELEGRAM_MODE ?? (env.NODE_ENV === "production" ? "webhook" : "polling");
+  const path = env.TELEGRAM_WEBHOOK_PATH.startsWith("/")
+    ? env.TELEGRAM_WEBHOOK_PATH
+    : `/${env.TELEGRAM_WEBHOOK_PATH}`;
   res.json({
     enabled: Boolean(env.TELEGRAM_ENABLED && env.TELEGRAM_BOT_TOKEN && getTelegramBot()),
-    mode: env.TELEGRAM_MODE ?? (env.NODE_ENV === "production" ? "webhook" : "polling"),
+    mode,
     hasToken: Boolean(env.TELEGRAM_BOT_TOKEN),
+    hasPublicUrl: Boolean(env.API_PUBLIC_URL),
+    hasWebhookSecret: Boolean(env.TELEGRAM_WEBHOOK_SECRET),
+    webhookPath: env.TELEGRAM_WEBHOOK_SECRET ? `${path}/:secret` : path,
   });
 });

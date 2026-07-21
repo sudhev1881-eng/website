@@ -176,7 +176,18 @@ function createBot(token: string): Bot {
   });
 
   const run = async (ctx: Context) => {
-    await processAuthorizedMessage(bot, ctx, currentRequestIp);
+    try {
+      await processAuthorizedMessage(bot, ctx, currentRequestIp);
+    } catch (err) {
+      logger.error("Telegram message handling failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      try {
+        await ctx.reply("❌ Something went wrong. Please try again in a moment.");
+      } catch {
+        // ignore reply failures (e.g. chat not found on synthetic updates)
+      }
+    }
   };
 
   bot.command("start", run);
@@ -251,6 +262,7 @@ export async function startTelegramBot(): Promise<{
       await botSingleton.api.setWebhook(webhookUrl, {
         drop_pending_updates: false,
         allowed_updates: ["message"],
+        ...(secret ? { secret_token: secret } : {}),
       });
       logger.info("Telegram webhook registered", {
         path: secret ? `${path}/***` : path,

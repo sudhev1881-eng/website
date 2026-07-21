@@ -47,3 +47,13 @@ services:
         sync: false
       - key: API_PUBLIC_URL
         sync: false
+      - key: TELEGRAM_ENABLED
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_MODE
+        value: webhook
+      - key: TELEGRAM_SUPER_ADMIN_IDS
+        sync: false
