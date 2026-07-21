@@ -320,16 +320,23 @@ export async function startTelegramBot(): Promise<{
     const webhookUrl = secret ? `${publicUrl}${path}/${secret}` : `${publicUrl}${path}`;
     try {
       await botSingleton.api.setWebhook(webhookUrl, {
-        drop_pending_updates: true,
+        // Keep pending updates across deploys; only drop when explicitly recovering.
+        drop_pending_updates: false,
         allowed_updates: ["message"],
         ...(secret ? { secret_token: secret } : {}),
       });
+      const info = await botSingleton.api.getWebhookInfo();
+      if (!info.url) {
+        throw new Error("setWebhook succeeded but getWebhookInfo.url is empty");
+      }
       logger.info("Telegram webhook registered", {
         path: secret ? `${path}/***` : path,
         bot: botSingleton.botInfo.username,
+        pending: info.pending_update_count,
       });
     } catch (err) {
       logger.error("Failed to set Telegram webhook", { message: (err as Error).message });
+      throw err;
     }
   } else {
     logger.warn("TELEGRAM_MODE=webhook but API_PUBLIC_URL unset — register webhook manually");
