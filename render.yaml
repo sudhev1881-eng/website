@@ -1,0 +1,48 @@
+# StudentLink API on Render
+# Dashboard: New → Blueprint → connect sudhev1881-eng/website
+# Or: New → Web Service → Root Directory = backend
+
+services:
+  - type: web
+    name: studentlink-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: NFC_CLOUD_MODE
+        value: "true"
+      - key: LOG_LEVEL
+        value: info
+      - key: SUPABASE_STORAGE_BUCKET
+        value: studentlink
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX
+        value: "300"
+      # Set these in the Render dashboard (Do not commit secrets)
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SITE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: API_PUBLIC_URL
+        sync: false
