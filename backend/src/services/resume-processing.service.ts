@@ -2,7 +2,10 @@ import { query } from "../db/pool.js";
 import { logger } from "../config/logger.js";
 import { downloadFile } from "../services/storage.js";
 import { extractResumeText } from "../services/resume-text-extraction.service.js";
-import { parseSkillsFromText } from "../services/skill-parser.service.js";
+import {
+  parseResumeStructured,
+  type StructuredResumeData,
+} from "../services/resume-structured-parser.service.js";
 
 export interface ResumeProcessingJobData {
   resumeId: string;
@@ -26,7 +29,7 @@ export async function processResumeJob(data: ResumeProcessingJobData): Promise<v
   try {
     const buffer = await downloadFile(filePath);
     const rawText = await extractResumeText(buffer, fileName ?? filePath);
-    const parsed = parseSkillsFromText(rawText);
+    const parsed = await parseResumeStructured(rawText);
 
     await query(
       `INSERT INTO extracted_resume_content (resume_id, raw_text, structured_data, extraction_confidence)
@@ -40,6 +43,7 @@ export async function processResumeJob(data: ResumeProcessingJobData): Promise<v
     );
 
     await upsertStudentSkills(studentId, parsed.skills);
+    await maybeFillEmptyContactFields(studentId, parsed.structuredData);
 
     await query(
       `UPDATE resumes
@@ -52,6 +56,9 @@ export async function processResumeJob(data: ResumeProcessingJobData): Promise<v
       resumeId,
       studentId,
       skillCount: parsed.skills.length,
+      experienceCount: parsed.structuredData.experience.length,
+      educationCount: parsed.structuredData.education.length,
+      parser: parsed.structuredData.parser,
       confidence: parsed.extractionConfidence,
     });
   } catch (err) {
@@ -104,4 +111,71 @@ async function upsertStudentSkills(
       byLower.set(key, { id: "new", name: skill.name });
     }
   }
+}
+
+/**
+ * Fill empty profile contact fields from extraction only — never overwrite user-edited data.
+ */
+async function maybeFillEmptyContactFields(
+  studentId: string,
+  data: StructuredResumeData,
+): Promise<void> {
+  const { contact } = data;
+  const phone = contact.phones[0]?.trim() || null;
+  const linkedin = contact.linkedin?.trim() || null;
+  const github = contact.github?.trim() || null;
+  const website = contact.website?.trim() || null;
+  const location = contact.address?.trim() || null;
+
+  if (!phone && !linkedin && !github && !website && !location) return;
+
+  const row = await query<{
+    phone: string | null;
+    linkedin: string | null;
+    github: string | null;
+    portfolio: string | null;
+    location: string | null;
+  }>(
+    `SELECT phone, linkedin, github, portfolio, location FROM students WHERE id = $1`,
+    [studentId],
+  );
+  const student = row.rows[0];
+  if (!student) return;
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  let i = 1;
+
+  const empty = (v: string | null | undefined) => !v || !String(v).trim();
+
+  if (phone && empty(student.phone)) {
+    sets.push(`phone = $${i++}`);
+    params.push(phone.slice(0, 50));
+  }
+  if (linkedin && empty(student.linkedin)) {
+    sets.push(`linkedin = $${i++}`);
+    params.push(linkedin.slice(0, 500));
+  }
+  if (github && empty(student.github)) {
+    sets.push(`github = $${i++}`);
+    params.push(github.slice(0, 500));
+  }
+  if (website && empty(student.portfolio)) {
+    sets.push(`portfolio = $${i++}`);
+    params.push(website.slice(0, 500));
+  }
+  if (location && empty(student.location)) {
+    sets.push(`location = $${i++}`);
+    params.push(location.slice(0, 255));
+  }
+
+  if (sets.length === 0) return;
+
+  sets.push(`updated_at = NOW()`);
+  params.push(studentId);
+  await query(`UPDATE students SET ${sets.join(", ")} WHERE id = $${i}`, params);
+  logger.info("Filled empty student contact fields from resume", {
+    studentId,
+    fields: sets.filter((s) => !s.startsWith("updated_at")).map((s) => s.split(" ")[0]),
+  });
 }

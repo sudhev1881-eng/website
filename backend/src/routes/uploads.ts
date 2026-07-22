@@ -223,7 +223,14 @@ uploadsRouter.get(
       const [extracted, skills] = await Promise.all([
         query<{
           raw_text: string;
-          structured_data: { skills?: Array<{ name: string; category: string; confidence: number }> };
+          structured_data: Record<string, unknown> & {
+            skills?: Array<{
+              name: string;
+              category: string;
+              frequency?: number;
+              confidence?: number;
+            }>;
+          };
           extraction_confidence: number | null;
         }>(
           `SELECT raw_text, structured_data, extraction_confidence
@@ -237,7 +244,13 @@ uploadsRouter.get(
       ]);
 
       const ext = extracted.rows[0];
-      const structuredSkills = ext?.structured_data?.skills ?? [];
+      const structured = ext?.structured_data ?? {};
+      const structuredSkills = (structured.skills ?? []).map((s) => ({
+        name: s.name,
+        category: s.category,
+        confidence: s.confidence ?? Math.min(1, 0.5 + (s.frequency ?? 1) * 0.05),
+        frequency: s.frequency ?? 1,
+      }));
       const kb = row.file_size_bytes / 1024;
 
       res.json({
@@ -253,6 +266,7 @@ uploadsRouter.get(
         processedAt: row.processed_at ? new Date(row.processed_at).toISOString() : null,
         extractionConfidence: ext?.extraction_confidence ?? null,
         extractedSkills: structuredSkills,
+        structuredData: structured,
         skills: skills.rows,
         skillsCount: skills.rows.length,
         hasExtractedText: Boolean(ext?.raw_text?.trim()),

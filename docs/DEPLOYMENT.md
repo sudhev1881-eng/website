@@ -99,16 +99,20 @@ Or: **New → Blueprint** → select this repo (uses `render.yaml`).
 | `TELEGRAM_WEBHOOK_SECRET` | Random secret; webhook URL becomes `/api/telegram/webhook/<secret>` |
 | `TELEGRAM_MODE` | `webhook` on Render (default in production) |
 | `TELEGRAM_SUPER_ADMIN_IDS` | Optional bootstrap Telegram user IDs (comma-separated) |
-| `OPENAI_API_KEY` | Optional — NL assist only; commands work offline without it |
-| `RESUME_PROCESSING_ENABLED` | `true` (default) to extract skills from PDF/DOCX resumes after upload |
+| `OPENAI_API_KEY` | Optional — Telegram NL assist + higher-accuracy resume LLM refine; core paths work without it |
+| `OPENAI_MODEL` | Optional — default `gpt-4o-mini` when using OpenAI |
+| `RESUME_PROCESSING_ENABLED` | `true` (default) to extract structured profile sections from PDF/DOCX resumes after upload |
 | `REDIS_URL` | Optional — enables BullMQ for resume jobs; without Redis, processing runs in-process |
 
-#### Resume skill extraction
-1. Run migration `009_resume_extraction.sql` (`npm run db:migrate`).
-2. Upload a **PDF** or **DOCX** from the student Resume page. Legacy **.doc** still uploads but skill extraction is skipped (message asks for PDF or DOCX).
+#### Resume structured extraction
+1. Run migration `009_resume_extraction.sql` (`npm run db:migrate`). No extra migration is required for full structured fields — they live in `extracted_resume_content.structured_data` (JSONB).
+2. Upload a **PDF** or **DOCX** from the student Resume page. Legacy **.doc** still uploads but extraction is skipped (message asks for PDF or DOCX).
 3. Status polls via `GET /api/students/me/resumes/:id` (`pending` → `processing` → `completed` / `failed` / `skipped`).
-4. Matched skills are upserted into the existing per-student `skills` table (no duplicate names).
-5. Redis is optional: set `REDIS_URL` for BullMQ workers; otherwise the API uses `setImmediate` with the same processor.
+4. Heuristic parser (always free) extracts contact, summary, experience, education, skills, certifications, projects, and languages into `structured_data`. Skills are also upserted into the per-student `skills` table.
+5. **Optional accuracy boost:** set `OPENAI_API_KEY` so the API can refine the heuristic JSON with a cheap chat model (`OPENAI_MODEL`, default `gpt-4o-mini`). On LLM failure, the heuristic result is kept. Without a key, behavior is fully offline.
+6. Empty student profile fields (`phone`, `linkedin`, `github`, `portfolio`, `location`) may be filled from extraction only when currently blank — never overwritten.
+7. Scanned/image-only PDFs still need OCR (out of scope); text-based PDF/DOCX work best.
+8. Redis is optional: set `REDIS_URL` for BullMQ workers; otherwise the API uses `setImmediate` with the same processor.
 
 #### Telegram Admin Assistant setup
 1. Run migrations (`npm run db:migrate`) so `telegram_*` tables exist.

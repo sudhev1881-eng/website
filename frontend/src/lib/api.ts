@@ -280,6 +280,60 @@ export interface ResumeVersion {
   skillsCount?: number;
 }
 
+export interface ExtractedResumeContact {
+  emails: string[];
+  phones: string[];
+  linkedin: string | null;
+  github: string | null;
+  website: string | null;
+  address: string | null;
+  name: string | null;
+}
+
+export interface ExtractedResumeExperience {
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  bullets: string[];
+  raw: string;
+}
+
+export interface ExtractedResumeEducation {
+  school: string | null;
+  degree: string | null;
+  field: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  gpa: string | null;
+  raw: string;
+}
+
+export interface ExtractedResumeStructuredData {
+  contact?: ExtractedResumeContact;
+  summary?: string | null;
+  experience?: ExtractedResumeExperience[];
+  education?: ExtractedResumeEducation[];
+  skills?: Array<{ name: string; category: string; frequency?: number; confidence?: number }>;
+  certifications?: Array<{ name: string; issuer?: string | null; date?: string | null }>;
+  projects?: Array<{
+    name: string | null;
+    description: string | null;
+    technologies: string[];
+    url?: string | null;
+  }>;
+  languages?: string[];
+  confidence?: {
+    overall: number;
+    contact: number;
+    experience: number;
+    education: number;
+    skills: number;
+  };
+  parser?: "heuristic" | "heuristic+llm";
+}
+
 export interface ResumeStatusDetail {
   id: string;
   fileName: string;
@@ -292,7 +346,8 @@ export interface ResumeStatusDetail {
   errorMessage: string | null;
   processedAt: string | null;
   extractionConfidence: number | null;
-  extractedSkills: Array<{ name: string; category: string; confidence: number }>;
+  extractedSkills: Array<{ name: string; category: string; confidence: number; frequency?: number }>;
+  structuredData?: ExtractedResumeStructuredData | null;
   skills: Array<{ name: string; level: number; category: string }>;
   skillsCount: number;
   hasExtractedText: boolean;
