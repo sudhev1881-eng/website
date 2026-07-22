@@ -51,7 +51,9 @@ profilesRouter.get("/:slug/resume", async (req, res) => {
 
     const studentId = studentResult.rows[0].id;
     const resume = await query<{ file_path: string | null }>(
-      `SELECT file_path FROM resumes WHERE student_id = $1 AND is_active = TRUE ORDER BY version DESC LIMIT 1`,
+      `SELECT file_path FROM resumes
+       WHERE student_id = $1 AND is_active = TRUE AND COALESCE(is_draft, FALSE) = FALSE
+       ORDER BY version DESC LIMIT 1`,
       [studentId],
     );
 
@@ -109,7 +111,12 @@ profilesRouter.get("/:slug", async (req, res) => {
       query(`SELECT * FROM skills WHERE student_id = $1 ORDER BY sort_order`, [s.id]),
       query(`SELECT * FROM certificates WHERE student_id = $1 ORDER BY sort_order`, [s.id]),
       query(`SELECT * FROM experience WHERE student_id = $1 ORDER BY sort_order`, [s.id]),
-      query(`SELECT * FROM resumes WHERE student_id = $1 AND is_active = TRUE ORDER BY version DESC LIMIT 1`, [s.id]),
+      query(
+        `SELECT * FROM resumes
+         WHERE student_id = $1 AND is_active = TRUE AND COALESCE(is_draft, FALSE) = FALSE
+         ORDER BY version DESC LIMIT 1`,
+        [s.id],
+      ),
     ]);
 
     res.json({

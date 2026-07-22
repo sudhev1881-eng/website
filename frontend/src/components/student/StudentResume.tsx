@@ -4,14 +4,17 @@ import * as React from "react";
 import {
   FileText,
   Download,
-  History,
   Sparkles,
   Briefcase,
   GraduationCap,
-  Mail,
   Award,
   FolderKanban,
   ChevronDown,
+  Check,
+  Pencil,
+  Trash2,
+  Plus,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
@@ -25,7 +28,9 @@ import { useStudentData } from "@/providers/student-data-provider";
 import {
   api,
   fileUrl,
-  type ExtractedResumeStructuredData,
+  type ResumeStatusDetail,
+  type ResumeValidationFlag,
+  type ResumeSectionDecision,
   type ResumeVersion,
 } from "@/lib/api";
 import { useResumeStatus } from "@/hooks/useResumeStatus";
@@ -35,13 +40,21 @@ function processingBadgeVariant(
 ): "default" | "primary" | "success" | "error" | "warning" {
   switch (status) {
     case "completed":
+    case "confirmed":
       return "success";
+    case "awaiting_confirmation":
+      return "warning";
     case "failed":
+    case "rejected":
       return "error";
     case "skipped":
       return "warning";
     case "pending":
     case "processing":
+    case "extracting":
+    case "enhancing":
+    case "validating":
+    case "embedding":
       return "primary";
     default:
       return "default";
@@ -51,18 +64,81 @@ function processingBadgeVariant(
 function processingLabel(status: string | undefined): string {
   switch (status) {
     case "pending":
+    case "uploaded":
       return "Queued";
     case "processing":
-      return "Extracting profile…";
+    case "extracting":
+      return "Extracting…";
+    case "enhancing":
+      return "Enhancing…";
+    case "validating":
+      return "Validating…";
+    case "awaiting_confirmation":
+      return "Review required";
+    case "embedding":
+      return "Indexing…";
     case "completed":
-      return "Profile extracted";
+    case "confirmed":
+      return "Active profile";
     case "failed":
-      return "Extraction failed";
+      return "Processing failed";
     case "skipped":
       return "Saved only";
+    case "rejected":
+      return "Discarded";
     default:
       return "Not processed";
   }
+}
+
+const PIPELINE_STAGES = [
+  "uploaded",
+  "extracting",
+  "enhancing",
+  "validating",
+  "awaiting_confirmation",
+] as const;
+
+function stageIndex(status: string | undefined, stage: string | null | undefined): number {
+  const key = stage || status || "";
+  const idx = PIPELINE_STAGES.indexOf(key as (typeof PIPELINE_STAGES)[number]);
+  if (idx >= 0) return idx;
+  if (status === "pending") return 0;
+  if (status === "processing") return 1;
+  if (status === "confirmed" || status === "completed") return PIPELINE_STAGES.length;
+  return -1;
+}
+
+function PipelineProgress({
+  status,
+  stage,
+}: {
+  status?: string;
+  stage?: string | null;
+}) {
+  const current = stageIndex(status, stage);
+  return (
+    <ol className="flex flex-wrap gap-2 text-xs">
+      {PIPELINE_STAGES.map((s, i) => {
+        const done = current > i || status === "awaiting_confirmation" || status === "confirmed";
+        const active = current === i;
+        return (
+          <li
+            key={s}
+            className={`rounded-lg border px-2 py-1 ${
+              active
+                ? "border-primary bg-primary/10 text-primary"
+                : done
+                  ? "border-border bg-surface text-foreground"
+                  : "border-border text-muted-foreground"
+            }`}
+          >
+            {s.replace(/_/g, " ")}
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 function ExtractedSection({
@@ -71,12 +147,14 @@ function ExtractedSection({
   defaultOpen = true,
   children,
   empty,
+  actions,
 }: {
   title: string;
   icon: React.ReactNode;
   defaultOpen?: boolean;
   children: React.ReactNode;
   empty?: boolean;
+  actions?: React.ReactNode;
 }) {
   if (empty) return null;
   return (
@@ -87,6 +165,7 @@ function ExtractedSection({
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-medium text-foreground [&::-webkit-details-marker]:hidden">
         <span className="text-primary">{icon}</span>
         <span className="flex-1">{title}</span>
+        {actions ? <span onClick={(e) => e.preventDefault()}>{actions}</span> : null}
         <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
       </summary>
       <div className="border-t border-border px-4 py-3 text-sm">{children}</div>
@@ -94,172 +173,228 @@ function ExtractedSection({
   );
 }
 
-function StructuredExtractionView({ data }: { data: ExtractedResumeStructuredData }) {
-  const contact = data.contact;
-  const experience = data.experience ?? [];
-  const education = data.education ?? [];
-  const skills = data.skills ?? [];
-  const certifications = data.certifications ?? [];
-  const projects = data.projects ?? [];
-  const hasContact =
-    contact &&
-    (contact.name ||
-      contact.emails?.length ||
-      contact.phones?.length ||
-      contact.linkedin ||
-      contact.github ||
-      contact.website ||
-      contact.address);
+function SectionActions({
+  sectionKey,
+  decision,
+  onAction,
+  busy,
+}: {
+  sectionKey: string;
+  decision?: ResumeSectionDecision;
+  onAction: (action: "accept" | "reject" | "delete") => void;
+  busy: boolean;
+}) {
+  const accepted = decision?.accepted && !decision?.deleted;
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        size="sm"
+        variant={accepted ? "default" : "outline"}
+        disabled={busy}
+        onClick={() => onAction("accept")}
+        title={`Accept ${sectionKey}`}
+      >
+        <Check className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={!accepted && !decision?.deleted ? "outline" : "ghost"}
+        disabled={busy}
+        onClick={() => onAction("reject")}
+        title="Skip section"
+      >
+        <X className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={busy}
+        onClick={() => onAction("delete")}
+        title="Delete section"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+function DraftReviewPanel({
+  draft,
+  onUpdated,
+}: {
+  draft: ResumeStatusDetail;
+  onUpdated: (next: ResumeStatusDetail) => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [editingCert, setEditingCert] = React.useState<number | null>(null);
+  const [certForm, setCertForm] = React.useState({
+    issuer: "",
+    issueDate: "",
+    credentialId: "",
+    credentialUrl: "",
+  });
+  const [customTitle, setCustomTitle] = React.useState("");
+  const [customItems, setCustomItems] = React.useState("");
+
+  const data = draft.structuredData;
+  const decisions = draft.sectionDecisions ?? {};
+  const flags = draft.validationFlags ?? [];
+  const needsCertInput = flags.filter((f) => f.needsUserInput && f.section === "certifications");
+
+  const patch = async (body: Parameters<typeof api.students.patchResumeDraft>[1]) => {
+    setBusy(true);
+    try {
+      const result = await api.students.patchResumeDraft(draft.id, body);
+      onUpdated({
+        ...draft,
+        structuredData: result.structuredData,
+        sectionDecisions: result.sectionDecisions,
+        validationFlags: result.validationFlags,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update draft");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      const result = await api.students.confirmResumeDraft(draft.id);
+      toast.success(
+        result.embeddingStatus === "skipped_no_key"
+          ? "Resume confirmed (embeddings skipped — no API key)"
+          : "Resume confirmed — profile updated",
+      );
+      onUpdated({ ...draft, processingStatus: "confirmed", isDraft: false, active: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Confirm failed";
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reject = async () => {
+    setBusy(true);
+    try {
+      await api.students.rejectResumeDraft(draft.id);
+      toast.success("Draft discarded — previous resume kept");
+      onUpdated({ ...draft, processingStatus: "rejected" });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reject failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!data) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Draft is ready but has no extracted sections. You can still confirm to replace the file, or
+        discard.
+      </p>
+    );
+  }
+
+  const certs = data.certifications ?? [];
 
   return (
-    <div className="space-y-3">
-      {data.summary ? (
-        <div className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-foreground/70">
-            Summary
-          </p>
-          <p className="whitespace-pre-wrap text-foreground">{data.summary}</p>
-        </div>
+    <div className="space-y-4">
+      <PipelineProgress status={draft.processingStatus} stage={draft.processingStage} />
+
+      {flags.length > 0 ? (
+        <ul className="space-y-1 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+          {flags.map((f: ResumeValidationFlag, i) => (
+            <li key={`${f.code}-${i}`} className="text-muted-foreground">
+              {f.needsUserInput ? (
+                <span className="font-medium text-foreground">Action needed: </span>
+              ) : null}
+              {f.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {data.summary != null ? (
+        <ExtractedSection
+          title="Summary"
+          icon={<Sparkles className="h-4 w-4" />}
+          actions={
+            <SectionActions
+              sectionKey="summary"
+              decision={decisions.summary}
+              busy={busy}
+              onAction={(action) => void patch({ sectionKey: "summary", action })}
+            />
+          }
+        >
+          <p className="whitespace-pre-wrap text-foreground">{data.summary || "—"}</p>
+        </ExtractedSection>
       ) : null}
 
       <ExtractedSection
-        title="Contact"
-        icon={<Mail className="h-4 w-4" />}
-        empty={!hasContact}
-      >
-        <dl className="grid gap-2 sm:grid-cols-2">
-          {contact?.name ? (
-            <>
-              <dt className="text-muted-foreground">Name</dt>
-              <dd>{contact.name}</dd>
-            </>
-          ) : null}
-          {contact?.emails?.length ? (
-            <>
-              <dt className="text-muted-foreground">Email</dt>
-              <dd className="break-all">{contact.emails.join(", ")}</dd>
-            </>
-          ) : null}
-          {contact?.phones?.length ? (
-            <>
-              <dt className="text-muted-foreground">Phone</dt>
-              <dd>{contact.phones.join(", ")}</dd>
-            </>
-          ) : null}
-          {contact?.linkedin ? (
-            <>
-              <dt className="text-muted-foreground">LinkedIn</dt>
-              <dd className="break-all">
-                <a
-                  href={contact.linkedin.startsWith("http") ? contact.linkedin : `https://${contact.linkedin}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  {contact.linkedin}
-                </a>
-              </dd>
-            </>
-          ) : null}
-          {contact?.github ? (
-            <>
-              <dt className="text-muted-foreground">GitHub</dt>
-              <dd className="break-all">
-                <a
-                  href={contact.github.startsWith("http") ? contact.github : `https://${contact.github}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  {contact.github}
-                </a>
-              </dd>
-            </>
-          ) : null}
-          {contact?.website ? (
-            <>
-              <dt className="text-muted-foreground">Website</dt>
-              <dd className="break-all">
-                <a
-                  href={contact.website}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  {contact.website}
-                </a>
-              </dd>
-            </>
-          ) : null}
-          {contact?.address ? (
-            <>
-              <dt className="text-muted-foreground">Address</dt>
-              <dd>{contact.address}</dd>
-            </>
-          ) : null}
-        </dl>
-      </ExtractedSection>
-
-      <ExtractedSection
-        title={`Experience (${experience.length})`}
+        title={`Experience (${data.experience?.length ?? 0})`}
         icon={<Briefcase className="h-4 w-4" />}
-        empty={experience.length === 0}
+        empty={!data.experience?.length}
+        actions={
+          <SectionActions
+            sectionKey="experience"
+            decision={decisions.experience}
+            busy={busy}
+            onAction={(action) => void patch({ sectionKey: "experience", action })}
+          />
+        }
       >
-        <ul className="space-y-4">
-          {experience.map((job, i) => (
-            <li key={i} className="border-b border-border pb-3 last:border-0 last:pb-0">
-              <p className="font-medium text-foreground">
-                {[job.title, job.company].filter(Boolean).join(" · ") || "Role"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {[job.location, [job.startDate, job.endDate].filter(Boolean).join(" – ")]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-              {job.bullets?.length ? (
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-muted-foreground">
-                  {job.bullets.slice(0, 6).map((b, j) => (
-                    <li key={j}>{b}</li>
-                  ))}
-                </ul>
-              ) : null}
+        <ul className="space-y-2">
+          {(data.experience ?? []).map((e, i) => (
+            <li key={i} className="font-medium">
+              {e.title || "Role"}
+              {e.company ? ` · ${e.company}` : ""}
             </li>
           ))}
         </ul>
       </ExtractedSection>
 
       <ExtractedSection
-        title={`Education (${education.length})`}
+        title={`Education (${data.education?.length ?? 0})`}
         icon={<GraduationCap className="h-4 w-4" />}
-        empty={education.length === 0}
+        empty={!data.education?.length}
+        actions={
+          <SectionActions
+            sectionKey="education"
+            decision={decisions.education}
+            busy={busy}
+            onAction={(action) => void patch({ sectionKey: "education", action })}
+          />
+        }
       >
-        <ul className="space-y-3">
-          {education.map((edu, i) => (
-            <li key={i}>
-              <p className="font-medium text-foreground">
-                {edu.school || edu.degree || "Education"}
-              </p>
-              <p className="text-muted-foreground">
-                {[edu.degree, edu.field].filter(Boolean).join(" in ")}
-                {edu.gpa ? ` · GPA ${edu.gpa}` : ""}
-              </p>
-              {(edu.startDate || edu.endDate) && (
-                <p className="text-xs text-muted-foreground">
-                  {[edu.startDate, edu.endDate].filter(Boolean).join(" – ")}
-                </p>
-              )}
-            </li>
+        <ul className="space-y-2">
+          {(data.education ?? []).map((e, i) => (
+            <li key={i}>{e.school || e.degree || "Education"}</li>
           ))}
         </ul>
       </ExtractedSection>
 
       <ExtractedSection
-        title={`Skills (${skills.length})`}
+        title={`Skills (${data.skills?.length ?? 0})`}
         icon={<Sparkles className="h-4 w-4" />}
-        empty={skills.length === 0}
+        empty={!data.skills?.length}
+        actions={
+          <SectionActions
+            sectionKey="skills"
+            decision={decisions.skills}
+            busy={busy}
+            onAction={(action) => void patch({ sectionKey: "skills", action })}
+          />
+        }
       >
         <div className="flex flex-wrap gap-2">
-          {skills.map((s) => (
+          {(data.skills ?? []).map((s) => (
             <Badge key={s.name} variant="secondary">
               {s.name}
             </Badge>
@@ -268,71 +403,186 @@ function StructuredExtractionView({ data }: { data: ExtractedResumeStructuredDat
       </ExtractedSection>
 
       <ExtractedSection
-        title={`Certifications (${certifications.length})`}
+        title={`Certifications (${certs.length})`}
         icon={<Award className="h-4 w-4" />}
-        empty={certifications.length === 0}
-        defaultOpen={false}
+        empty={certs.length === 0}
+        actions={
+          <SectionActions
+            sectionKey="certifications"
+            decision={decisions.certifications}
+            busy={busy}
+            onAction={(action) => void patch({ sectionKey: "certifications", action })}
+          />
+        }
       >
-        <ul className="space-y-2">
-          {certifications.map((c, i) => (
-            <li key={i}>
-              <span className="font-medium">{c.name}</span>
-              {(c.issuer || c.date) && (
-                <span className="text-muted-foreground">
-                  {" "}
-                  · {[c.issuer, c.date].filter(Boolean).join(" · ")}
-                </span>
-              )}
+        <ul className="space-y-3">
+          {certs.map((c, i) => (
+            <li key={i} className="rounded-lg border border-border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium">{c.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {[c.issuer, c.issueDate || c.date, c.credentialId].filter(Boolean).join(" · ") ||
+                      "Missing issuer / dates / credential"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setEditingCert(i);
+                    setCertForm({
+                      issuer: c.issuer ?? "",
+                      issueDate: c.issueDate || c.date || "",
+                      credentialId: c.credentialId ?? "",
+                      credentialUrl: c.credentialUrl ?? "",
+                    });
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
+              </div>
+              {editingCert === i ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="Issuer"
+                    value={certForm.issuer}
+                    onChange={(e) => setCertForm((f) => ({ ...f, issuer: e.target.value }))}
+                  />
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="Issue date"
+                    value={certForm.issueDate}
+                    onChange={(e) => setCertForm((f) => ({ ...f, issueDate: e.target.value }))}
+                  />
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="Credential ID"
+                    value={certForm.credentialId}
+                    onChange={(e) => setCertForm((f) => ({ ...f, credentialId: e.target.value }))}
+                  />
+                  <input
+                    className="rounded-lg border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="Credential URL"
+                    value={certForm.credentialUrl}
+                    onChange={(e) => setCertForm((f) => ({ ...f, credentialUrl: e.target.value }))}
+                  />
+                  <div className="flex gap-2 sm:col-span-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() =>
+                        void patch({
+                          sectionKey: "certifications",
+                          action: "edit",
+                          index: i,
+                          data: certForm,
+                        }).then(() => setEditingCert(null))
+                      }
+                    >
+                      Save
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setEditingCert(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
+        {needsCertInput.length > 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Complete issuer, issue date, and credential before confirming — or reject the
+            certifications section.
+          </p>
+        ) : null}
       </ExtractedSection>
 
       <ExtractedSection
-        title={`Projects (${projects.length})`}
+        title={`Projects (${data.projects?.length ?? 0})`}
         icon={<FolderKanban className="h-4 w-4" />}
-        empty={projects.length === 0}
+        empty={!data.projects?.length}
         defaultOpen={false}
+        actions={
+          <SectionActions
+            sectionKey="projects"
+            decision={decisions.projects}
+            busy={busy}
+            onAction={(action) => void patch({ sectionKey: "projects", action })}
+          />
+        }
       >
-        <ul className="space-y-3">
-          {projects.map((p, i) => (
-            <li key={i}>
-              <p className="font-medium text-foreground">{p.name || "Project"}</p>
-              {p.description ? (
-                <p className="text-muted-foreground">{p.description}</p>
-              ) : null}
-              {p.technologies?.length ? (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {p.technologies.map((t) => (
-                    <Badge key={t} variant="default">
-                      {t}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
-              {p.url ? (
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-block text-primary hover:underline"
-                >
-                  {p.url}
-                </a>
-              ) : null}
-            </li>
+        <ul className="space-y-2">
+          {(data.projects ?? []).map((p, i) => (
+            <li key={i}>{p.name || "Project"}</li>
           ))}
         </ul>
       </ExtractedSection>
 
-      {data.parser || data.confidence?.overall != null ? (
-        <p className="text-xs text-muted-foreground">
-          {data.parser === "heuristic+llm" ? "Parsed with AI assist" : "Parsed offline"}
-          {data.confidence?.overall != null
-            ? ` · confidence ${Math.round(data.confidence.overall * 100)}%`
-            : ""}
-        </p>
-      ) : null}
+      <div className="rounded-xl border border-border bg-surface px-4 py-3">
+        <p className="mb-2 text-sm font-medium">Add custom section</p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            placeholder="Title"
+            value={customTitle}
+            onChange={(e) => setCustomTitle(e.target.value)}
+          />
+          <input
+            className="flex-[2] rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            placeholder="Items (comma-separated)"
+            value={customItems}
+            onChange={(e) => setCustomItems(e.target.value)}
+          />
+          <Button
+            type="button"
+            disabled={busy || !customTitle.trim()}
+            onClick={() =>
+              void patch({
+                sectionKey: "customSections",
+                action: "add_custom",
+                customTitle,
+                customItems: customItems
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              }).then(() => {
+                setCustomTitle("");
+                setCustomItems("");
+              })
+            }
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
+        </div>
+        {(data.customSections ?? []).length > 0 ? (
+          <ul className="mt-3 space-y-1 text-sm">
+            {data.customSections!.map((s) => (
+              <li key={s.id}>
+                <span className="font-medium">{s.title}</span>
+                {s.items?.length ? `: ${s.items.join(", ")}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={busy} onClick={() => void confirm()}>
+          {busy ? <Spinner size="sm" /> : null}
+          Confirm & replace resume
+        </Button>
+        <Button variant="outline" disabled={busy} onClick={() => void reject()}>
+          Discard draft
+        </Button>
+      </div>
     </div>
   );
 }
@@ -340,37 +590,44 @@ function StructuredExtractionView({ data }: { data: ExtractedResumeStructuredDat
 export function StudentResume() {
   const { data, refresh } = useStudentData();
   const [history, setHistory] = React.useState<ResumeVersion[]>([]);
-  const [historyLoading, setHistoryLoading] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
-  const [activeResumeId, setActiveResumeId] = React.useState<string | null>(null);
+  const [draftId, setDraftId] = React.useState<string | null>(null);
+  const [draftDetail, setDraftDetail] = React.useState<ResumeStatusDetail | null>(null);
 
-  const loadHistory = React.useCallback(() => {
-    setHistoryLoading(true);
+  const loadResumes = React.useCallback(() => {
     api.students
       .resumeHistory()
       .then((rows) => {
         setHistory(rows);
-        const active = rows.find((r) => r.active) ?? rows[0];
-        if (active) setActiveResumeId(active.id);
+        const draft = rows.find((r) => r.isDraft);
+        setDraftId(draft?.id ?? null);
       })
-      .catch(console.error)
-      .finally(() => setHistoryLoading(false));
+      .catch(console.error);
   }, []);
 
   React.useEffect(() => {
-    if (data?.resume) loadHistory();
-  }, [data?.resume, loadHistory]);
+    loadResumes();
+  }, [data?.resume, loadResumes]);
 
-  const { status: resumeStatus, isProcessing } = useResumeStatus(activeResumeId, {
-    enabled: Boolean(activeResumeId),
-  });
+  const {
+    status: draftStatus,
+    isProcessing,
+    awaitsConfirmation,
+    refresh: refreshDraftStatus,
+  } = useResumeStatus(draftId, { enabled: Boolean(draftId) });
 
   React.useEffect(() => {
-    if (resumeStatus?.processingStatus === "completed") {
+    if (draftStatus) setDraftDetail(draftStatus);
+  }, [draftStatus]);
+
+  React.useEffect(() => {
+    if (draftStatus?.processingStatus === "confirmed" || draftStatus?.processingStatus === "rejected") {
+      setDraftId(null);
+      setDraftDetail(null);
       void refresh();
-      loadHistory();
+      loadResumes();
     }
-  }, [resumeStatus?.processingStatus, refresh, loadHistory]);
+  }, [draftStatus?.processingStatus, refresh, loadResumes]);
 
   const handleUpload = async (files: File[]) => {
     const file = files[0];
@@ -378,19 +635,10 @@ export function StudentResume() {
     setUploading(true);
     try {
       const uploaded = await api.students.uploadResume(file);
-      if (uploaded.id) setActiveResumeId(uploaded.id);
+      if (uploaded.id) setDraftId(uploaded.id);
       await refresh();
-      loadHistory();
-      if (uploaded.processingStatus === "skipped") {
-        toast.success(
-          uploaded.errorMessage ??
-            "Resume uploaded (legacy .doc is saved only — use PDF or DOCX for profile extraction)",
-        );
-      } else if (uploaded.processingStatus === "pending") {
-        toast.success("Resume uploaded — extracting profile sections…");
-      } else {
-        toast.success("Resume uploaded");
-      }
+      loadResumes();
+      toast.success("Resume uploaded — processing draft for your review…");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -407,31 +655,22 @@ export function StudentResume() {
     window.open(resolved, "_blank");
   };
 
-  const processingStatus =
-    resumeStatus?.processingStatus ??
-    history.find((h) => h.id === activeResumeId)?.processingStatus;
+  const active = history.find((h) => h.active && !h.isDraft);
+  const studentResume = data?.resume;
+  const uploadHelper = "PDF or DOCX recommended · legacy .doc saved without AI parse · max 10MB";
 
-  const structured = resumeStatus?.structuredData;
-  const extractedSkills = resumeStatus?.extractedSkills ?? [];
-  const profileSkills = resumeStatus?.skills ?? data?.skills ?? [];
-  const hasStructured =
-    structured &&
-    (Boolean(structured.summary) ||
-      (structured.experience?.length ?? 0) > 0 ||
-      (structured.education?.length ?? 0) > 0 ||
-      (structured.skills?.length ?? 0) > 0 ||
-      (structured.certifications?.length ?? 0) > 0 ||
-      (structured.projects?.length ?? 0) > 0 ||
-      Boolean(structured.contact?.emails?.length) ||
-      Boolean(structured.contact?.name));
+  const showDraftReview =
+    draftDetail &&
+    (awaitsConfirmation || draftDetail.processingStatus === "awaiting_confirmation") &&
+    draftDetail.processingStatus !== "rejected";
 
-  const uploadHelper =
-    "PDF or DOCX for full profile extraction · legacy .doc saved only · max 10MB";
-
-  if (!data?.resume) {
+  if (!studentResume && !draftId) {
     return (
       <div>
-        <PageHeader title="Resume Manager" description="Upload and manage your resume versions." />
+        <PageHeader
+          title="Resume"
+          description="Upload one resume. Review extracted sections before they update your profile."
+        />
         <Card className="shadow-card">
           <CardContent className="p-6">
             {uploading ? (
@@ -451,74 +690,63 @@ export function StudentResume() {
         <EmptyState
           icon={<FileText className="h-6 w-6" />}
           title="No resume uploaded"
-          description="Upload your first resume to share with recruiters."
+          description="Upload a PDF or DOCX to extract and confirm your profile."
         />
       </div>
     );
   }
 
-  const studentResume = data.resume;
-
   return (
     <div>
       <PageHeader
-        title="Resume Manager"
-        description="Upload and manage your resume versions."
+        title="Resume"
+        description="One active resume per profile. New uploads stay as drafts until you confirm."
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle>Current Resume</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4 rounded-xl border border-border bg-surface p-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <FileText className="h-6 w-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-foreground">{studentResume.fileName}</p>
-                <p className="text-sm text-muted-foreground">
-                  {studentResume.fileSize} · Version {studentResume.version} · Uploaded{" "}
-                  {studentResume.uploadedAt}
-                </p>
-              </div>
-              <div className="flex flex-col items-end gap-1">
+        {studentResume ? (
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle>Active resume</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center gap-4 rounded-xl border border-border bg-surface p-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <FileText className="h-6 w-6" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-foreground">{studentResume.fileName}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {studentResume.fileSize} · Version {studentResume.version} · Uploaded{" "}
+                    {studentResume.uploadedAt}
+                  </p>
+                </div>
                 <Badge variant="success">Active</Badge>
-                {processingStatus ? (
-                  <Badge variant={processingBadgeVariant(processingStatus)}>
-                    {isProcessing ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Spinner size="sm" />
-                        {processingLabel(processingStatus)}
-                      </span>
-                    ) : (
-                      processingLabel(processingStatus)
-                    )}
-                  </Badge>
-                ) : null}
               </div>
-            </div>
-            {resumeStatus?.errorMessage ? (
-              <p className="text-sm text-muted-foreground">{resumeStatus.errorMessage}</p>
-            ) : null}
-            <div className="flex gap-2">
-              <Button onClick={() => handleDownload(studentResume.downloadUrl)}>
-                <Download className="h-4 w-4" />
-                Download
-              </Button>
-              {studentResume.downloadUrl ? (
-                <Button variant="outline" onClick={() => handleDownload(studentResume.downloadUrl)}>
-                  Preview
+              <div className="flex gap-2">
+                <Button onClick={() => handleDownload(studentResume.downloadUrl)}>
+                  <Download className="h-4 w-4" />
+                  Download
                 </Button>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle>Active resume</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                No confirmed resume yet. Confirm your draft to publish one.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Upload New Version</CardTitle>
+            <CardTitle>Upload new draft</CardTitle>
           </CardHeader>
           <CardContent>
             {uploading ? (
@@ -529,99 +757,89 @@ export function StudentResume() {
               <Upload
                 label="Upload resume"
                 accept=".pdf,.doc,.docx"
-                helperText={uploadHelper}
+                helperText={
+                  draftId
+                    ? "Uploading replaces your current draft only — active resume stays until you confirm."
+                    : uploadHelper
+                }
                 onUpload={handleUpload}
               />
             )}
           </CardContent>
         </Card>
 
-        <Card className="shadow-card lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5" />
-              Extracted Profile
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isProcessing ? (
-              <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
-                <Spinner />
-                Parsing contact, experience, education, skills, and more…
-              </div>
-            ) : hasStructured && structured ? (
-              <StructuredExtractionView data={structured} />
-            ) : extractedSkills.length > 0 || profileSkills.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {(extractedSkills.length > 0
-                  ? extractedSkills.map((s) => s.name)
-                  : profileSkills.map((s) => s.name)
-                ).map((name) => (
-                  <Badge key={name} variant="secondary">
-                    {name}
+        {draftId ? (
+          <Card className="shadow-card lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex flex-wrap items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Draft review
+                {draftDetail?.processingStatus ? (
+                  <Badge variant={processingBadgeVariant(draftDetail.processingStatus)}>
+                    {isProcessing ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Spinner size="sm" />
+                        {processingLabel(draftDetail.processingStatus)}
+                      </span>
+                    ) : (
+                      processingLabel(draftDetail.processingStatus)
+                    )}
                   </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Upload a PDF or DOCX resume to extract contact, experience, education, skills,
-                certifications, and projects. Legacy .doc files are saved but not parsed.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-card lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <History className="h-5 w-5" />
-              Version History
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {historyLoading ? (
-              <div className="flex justify-center py-8">
-                <Spinner />
-              </div>
-            ) : history.length > 0 ? (
-              <div className="space-y-3">
-                {history.map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm font-medium">{v.fileName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          v{v.version} · {v.uploadedAt}
-                          {typeof v.skillsCount === "number" ? ` · ${v.skillsCount} skills` : ""}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {v.processingStatus ? (
-                        <Badge variant={processingBadgeVariant(v.processingStatus)}>
-                          {processingLabel(v.processingStatus)}
-                        </Badge>
-                      ) : null}
-                      {v.active ? (
-                        <Badge variant="primary">Current</Badge>
-                      ) : (
-                        <Button variant="ghost" size="sm" onClick={() => handleDownload(v.downloadUrl)}>
-                          Download
-                        </Button>
-                      )}
-                    </div>
+                ) : null}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isProcessing ? (
+                <>
+                  <PipelineProgress
+                    status={draftDetail?.processingStatus}
+                    stage={draftDetail?.processingStage}
+                  />
+                  <div className="flex items-center gap-3 py-2 text-sm text-muted-foreground">
+                    <Spinner />
+                    Parsing and preparing sections for your confirmation…
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No version history available.</p>
-            )}
-          </CardContent>
-        </Card>
+                </>
+              ) : showDraftReview && draftDetail ? (
+                <DraftReviewPanel
+                  draft={draftDetail}
+                  onUpdated={(next) => {
+                    if (next.processingStatus === "confirmed" || next.processingStatus === "rejected") {
+                      setDraftId(null);
+                      setDraftDetail(null);
+                      void refresh();
+                      loadResumes();
+                      return;
+                    }
+                    setDraftDetail(next);
+                    void refreshDraftStatus();
+                  }}
+                />
+              ) : draftDetail?.errorMessage ? (
+                <p className="text-sm text-muted-foreground">{draftDetail.errorMessage}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">Waiting for draft status…</p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {studentResume && !draftId && active ? (
+          <Card className="shadow-card lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Profile from resume
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Upload a new PDF or DOCX to extract sections, review them, and replace this resume.
+                Only accepted fields update your profile on confirm.
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

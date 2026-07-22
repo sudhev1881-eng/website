@@ -272,12 +272,29 @@ export interface ResumeVersion {
   fileName: string;
   version: number;
   active: boolean;
+  isDraft?: boolean;
   uploadedAt: string;
   downloadUrl: string | null;
   processingStatus?: string;
+  processingStage?: string | null;
   errorMessage?: string | null;
   processedAt?: string | null;
   skillsCount?: number;
+}
+
+export interface ResumeValidationFlag {
+  code: string;
+  section: string;
+  message: string;
+  severity: "info" | "warning" | "error";
+  needsUserInput: boolean;
+  itemIndex?: number;
+}
+
+export interface ResumeSectionDecision {
+  accepted: boolean;
+  deleted?: boolean;
+  acceptedIndexes?: number[] | "all";
 }
 
 export interface ExtractedResumeContact {
@@ -313,10 +330,19 @@ export interface ExtractedResumeEducation {
 export interface ExtractedResumeStructuredData {
   contact?: ExtractedResumeContact;
   summary?: string | null;
+  objective?: string | null;
   experience?: ExtractedResumeExperience[];
   education?: ExtractedResumeEducation[];
   skills?: Array<{ name: string; category: string; frequency?: number; confidence?: number }>;
-  certifications?: Array<{ name: string; issuer?: string | null; date?: string | null }>;
+  certifications?: Array<{
+    name: string;
+    issuer?: string | null;
+    date?: string | null;
+    issueDate?: string | null;
+    expiryDate?: string | null;
+    credentialId?: string | null;
+    credentialUrl?: string | null;
+  }>;
   projects?: Array<{
     name: string | null;
     description: string | null;
@@ -324,6 +350,9 @@ export interface ExtractedResumeStructuredData {
     url?: string | null;
   }>;
   languages?: string[];
+  awards?: Array<{ name: string; issuer?: string | null; date?: string | null }>;
+  achievements?: string[];
+  customSections?: Array<{ id: string; title: string; items: string[] }>;
   confidence?: {
     overall: number;
     contact: number;
@@ -331,7 +360,7 @@ export interface ExtractedResumeStructuredData {
     education: number;
     skills: number;
   };
-  parser?: "heuristic" | "heuristic+llm";
+  parser?: "heuristic" | "heuristic+llm" | "enhanced";
 }
 
 export interface ResumeStatusDetail {
@@ -340,14 +369,19 @@ export interface ResumeStatusDetail {
   fileSize: string;
   version: number;
   active: boolean;
+  isDraft?: boolean;
   uploadedAt: string;
   downloadUrl: string | null;
   processingStatus: string;
+  processingStage?: string | null;
   errorMessage: string | null;
   processedAt: string | null;
   extractionConfidence: number | null;
   extractedSkills: Array<{ name: string; category: string; confidence: number; frequency?: number }>;
   structuredData?: ExtractedResumeStructuredData | null;
+  enhancedData?: unknown;
+  validationFlags?: ResumeValidationFlag[];
+  sectionDecisions?: Record<string, ResumeSectionDecision>;
   skills: Array<{ name: string; level: number; category: string }>;
   skillsCount: number;
   hasExtractedText: boolean;
@@ -446,16 +480,53 @@ export const api = {
       uploadRequest<
         StudentDashboardData["resume"] & {
           id: string;
+          draftId?: string;
           status?: string;
           processingStatus?: string;
+          processingStage?: string;
+          isDraft?: boolean;
           errorMessage?: string | null;
         }
       >("/students/me/resume", file),
 
     resumeHistory: () => request<ResumeVersion[]>("/students/me/resumes"),
 
+    resumeDraft: () => request<ResumeStatusDetail | null>("/students/me/resumes/draft"),
+
     resumeStatus: (resumeId: string) =>
       request<ResumeStatusDetail>(`/students/me/resumes/${resumeId}`),
+
+    patchResumeDraft: (
+      resumeId: string,
+      body: {
+        sectionKey?: string;
+        action?: "accept" | "reject" | "delete" | "edit" | "add_custom";
+        data?: unknown;
+        index?: number;
+        customTitle?: string;
+        customItems?: string[];
+        sectionDecisions?: Record<string, ResumeSectionDecision>;
+      },
+    ) =>
+      request<{
+        structuredData: ExtractedResumeStructuredData;
+        sectionDecisions: Record<string, ResumeSectionDecision>;
+        validationFlags: ResumeValidationFlag[];
+      }>(`/students/me/resumes/${resumeId}/draft`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+
+    confirmResumeDraft: (resumeId: string) =>
+      request<{ success: boolean; resumeId: string; embeddingStatus: string }>(
+        `/students/me/resumes/${resumeId}/confirm`,
+        { method: "POST" },
+      ),
+
+    rejectResumeDraft: (resumeId: string) =>
+      request<{ success: boolean }>(`/students/me/resumes/${resumeId}/reject`, {
+        method: "POST",
+      }),
 
     uploadAvatar: (file: File) =>
       uploadRequest<{ avatarUrl: string }>("/students/me/avatar", file),

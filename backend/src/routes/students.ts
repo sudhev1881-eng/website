@@ -74,7 +74,12 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
         query(`SELECT * FROM skills WHERE student_id = $1 ORDER BY sort_order`, [studentId]),
         query(`SELECT * FROM certificates WHERE student_id = $1 ORDER BY sort_order`, [studentId]),
         query(`SELECT * FROM experience WHERE student_id = $1 ORDER BY sort_order`, [studentId]),
-        query(`SELECT * FROM resumes WHERE student_id = $1 AND is_active = TRUE ORDER BY version DESC LIMIT 1`, [studentId]),
+        query(
+          `SELECT * FROM resumes
+           WHERE student_id = $1 AND is_active = TRUE AND COALESCE(is_draft, FALSE) = FALSE
+           ORDER BY version DESC LIMIT 1`,
+          [studentId],
+        ),
         query(`SELECT * FROM nfc_cards WHERE student_id = $1 LIMIT 1`, [studentId]),
       ]);
 

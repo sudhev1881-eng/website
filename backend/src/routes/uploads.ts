@@ -4,15 +4,19 @@ import { requireAuth, requireStudent, type AuthRequest } from "../middleware/sup
 import { resumeUpload, imageUpload, verifyFileSignature } from "../middleware/upload.js";
 import { enqueueResumeProcessing } from "../queues/resume-processing.queue.js";
 import {
-  isExtractableResumeName,
-  isLegacyDocName,
-} from "../services/resume-text-extraction.service.js";
-import { LEGACY_DOC_MESSAGE } from "../services/docx-extraction.service.js";
-import {
   deleteFile,
   resolvePublicFileUrl,
   saveFile,
 } from "../services/storage.js";
+import {
+  resumeUploadService,
+  userConfirmationService,
+  markSkippedDraftAwaitingConfirm,
+  ConfirmBlockedError,
+  DraftNotReadyError,
+  toLegacyStructuredView,
+  type IntelligentResumeData,
+} from "../services/resume/index.js";
 
 function extractStoragePath(urlOrPath: string): string {
   if (!urlOrPath.includes("://")) return urlOrPath.replace(/^\/api\/uploads\//, "");
@@ -47,7 +51,33 @@ function handleMulterError(err: unknown, res: import("express").Response) {
   res.status(500).json({ error: "Upload failed" });
 }
 
-/** POST /api/students/me/resume */
+function formatFileSize(bytes: number): string {
+  const kb = bytes / 1024;
+  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`;
+}
+
+function skillsFromStructured(structured: Record<string, unknown>) {
+  const skills = structured.skills;
+  if (Array.isArray(skills)) {
+    return skills.map((s: { name: string; category: string; frequency?: number; confidence?: number }) => ({
+      name: s.name,
+      category: s.category,
+      confidence: s.confidence ?? Math.min(1, 0.5 + (s.frequency ?? 1) * 0.05),
+      frequency: s.frequency ?? 1,
+    }));
+  }
+  const detail = structured.skillsDetail as
+    | { all?: Array<{ name: string; category: string; frequency?: number; confidence?: number }> }
+    | undefined;
+  return (detail?.all ?? []).map((s) => ({
+    name: s.name,
+    category: s.category,
+    confidence: s.confidence ?? Math.min(1, 0.5 + (s.frequency ?? 1) * 0.05),
+    frequency: s.frequency ?? 1,
+  }));
+}
+
+/** POST /api/students/me/resume — stages a draft; does not replace active until confirm */
 uploadsRouter.post(
   "/me/resume",
   requireAuth,
@@ -80,65 +110,35 @@ uploadsRouter.post(
         return;
       }
 
-      const saved = await saveFile("resumes", studentId, file.originalname, file.buffer);
+      const draft = await resumeUploadService.createDraft({
+        studentId,
+        originalName: file.originalname,
+        buffer: file.buffer,
+      });
 
-      const versionResult = await query<{ max: number | null }>(
-        `SELECT MAX(version) AS max FROM resumes WHERE student_id = $1`,
-        [studentId],
-      );
-      const nextVersion = (versionResult.rows[0]?.max ?? 0) + 1;
-
-      const extractable = isExtractableResumeName(file.originalname);
-      const legacyDoc = isLegacyDocName(file.originalname);
-      const processingStatus = extractable ? "pending" : "skipped";
-      const errorMessage = legacyDoc
-        ? LEGACY_DOC_MESSAGE
-        : extractable
-          ? null
-          : "Skill extraction supports PDF and DOCX only";
-
-      await query(`UPDATE resumes SET is_active = FALSE WHERE student_id = $1`, [studentId]);
-
-      const result = await query(
-        `INSERT INTO resumes (
-           student_id, file_name, file_size_bytes, file_path, version, is_active,
-           processing_status, error_message, processed_at
-         )
-         VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8) RETURNING *`,
-        [
-          studentId,
-          file.originalname,
-          saved.sizeBytes,
-          saved.relativePath,
-          nextVersion,
-          processingStatus,
-          errorMessage,
-          extractable ? null : new Date(),
-        ],
-      );
-
-      const row = result.rows[0];
-
-      if (extractable) {
+      if (draft.extractable) {
         await enqueueResumeProcessing({
-          resumeId: row.id,
+          resumeId: draft.resumeId,
           studentId,
-          filePath: saved.relativePath,
-          fileName: file.originalname,
+          filePath: draft.filePath,
+          fileName: draft.fileName,
         });
+      } else {
+        await markSkippedDraftAwaitingConfirm(draft.resumeId, studentId);
       }
 
-      const kb = row.file_size_bytes / 1024;
-
       res.status(201).json({
-        id: row.id,
-        fileName: row.file_name,
-        fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
-        uploadedAt: row.uploaded_at.toISOString().split("T")[0],
-        version: row.version,
-        downloadUrl: resolvePublicFileUrl(saved.relativePath),
-        processingStatus: row.processing_status,
-        errorMessage: row.error_message ?? null,
+        id: draft.resumeId,
+        draftId: draft.resumeId,
+        fileName: draft.fileName,
+        fileSize: formatFileSize(draft.fileSizeBytes),
+        uploadedAt: new Date().toISOString().split("T")[0],
+        version: draft.version,
+        downloadUrl: resolvePublicFileUrl(draft.filePath),
+        processingStatus: draft.extractable ? draft.processingStatus : "awaiting_confirmation",
+        processingStage: draft.extractable ? draft.processingStage : "awaiting_confirmation",
+        isDraft: true,
+        errorMessage: draft.errorMessage ?? null,
       });
     } catch (err) {
       console.error("POST /students/me/resume error:", err);
@@ -147,7 +147,7 @@ uploadsRouter.post(
   },
 );
 
-/** GET /api/students/me/resumes — version history */
+/** GET /api/students/me/resumes — active + optional draft */
 uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRequest, res) => {
   try {
     const studentId = await getStudentId(req);
@@ -158,9 +158,12 @@ uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRe
 
     const result = await query(
       `SELECT r.id, r.file_name, r.file_size_bytes, r.file_path, r.version, r.is_active,
-              r.uploaded_at, r.processing_status, r.error_message, r.processed_at,
+              r.is_draft, r.uploaded_at, r.processing_status, r.processing_stage,
+              r.error_message, r.processed_at,
               (SELECT COUNT(*)::int FROM skills s WHERE s.student_id = r.student_id) AS skills_count
-       FROM resumes r WHERE r.student_id = $1 ORDER BY r.version DESC`,
+       FROM resumes r
+       WHERE r.student_id = $1 AND (r.is_active = TRUE OR r.is_draft = TRUE)
+       ORDER BY r.is_draft DESC, r.version DESC`,
       [studentId],
     );
 
@@ -170,20 +173,81 @@ uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRe
         fileName: r.file_name,
         version: r.version,
         active: r.is_active,
+        isDraft: r.is_draft,
         uploadedAt: r.uploaded_at.toISOString().split("T")[0],
         downloadUrl: resolvePublicFileUrl(r.file_path),
         processingStatus: r.processing_status,
+        processingStage: r.processing_stage ?? null,
         errorMessage: r.error_message ?? null,
         processedAt: r.processed_at ? new Date(r.processed_at).toISOString() : null,
         skillsCount: r.skills_count ?? 0,
       })),
     );
   } catch (err) {
+    console.error("GET /students/me/resumes error:", err);
     res.status(500).json({ error: "Failed to fetch resume history" });
   }
 });
 
-/** GET /api/students/me/resumes/:id — processing status + extracted skills */
+/** GET /api/students/me/resumes/draft — current draft if any */
+uploadsRouter.get("/me/resumes/draft", requireAuth, requireStudent, async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    if (!studentId) {
+      res.status(404).json({ error: "Student profile not found" });
+      return;
+    }
+
+    const draftRow = await query<{ id: string }>(
+      `SELECT id FROM resumes WHERE student_id = $1 AND is_draft = TRUE LIMIT 1`,
+      [studentId],
+    );
+    const draftId = draftRow.rows[0]?.id;
+    if (!draftId) {
+      res.json(null);
+      return;
+    }
+
+    const payload = await userConfirmationService.getDraft(studentId, draftId);
+    if (!payload) {
+      res.json(null);
+      return;
+    }
+
+    const { resume: row, extracted: ext } = payload;
+    const enhanced = ext?.enhanced_data;
+    const structured = enhanced
+      ? toLegacyStructuredView(enhanced)
+      : (ext?.structured_data ?? {});
+
+    res.json({
+      id: row.id,
+      draftId: row.id,
+      fileName: row.file_name,
+      fileSize: formatFileSize(row.file_size_bytes),
+      version: row.version,
+      active: row.is_active,
+      isDraft: row.is_draft,
+      uploadedAt: row.uploaded_at.toISOString().split("T")[0],
+      downloadUrl: resolvePublicFileUrl(row.file_path),
+      processingStatus: row.processing_status,
+      processingStage: row.processing_stage,
+      errorMessage: row.error_message,
+      processedAt: row.processed_at ? new Date(row.processed_at).toISOString() : null,
+      extractionConfidence: ext?.extraction_confidence ?? null,
+      structuredData: structured,
+      enhancedData: enhanced ?? null,
+      validationFlags: ext?.validation_flags ?? [],
+      sectionDecisions: ext?.section_decisions ?? {},
+      hasExtractedText: Boolean(ext?.raw_text?.trim()),
+    });
+  } catch (err) {
+    console.error("GET /students/me/resumes/draft error:", err);
+    res.status(500).json({ error: "Failed to fetch resume draft" });
+  }
+});
+
+/** GET /api/students/me/resumes/:id — processing status + extracted data */
 uploadsRouter.get(
   "/me/resumes/:id",
   requireAuth,
@@ -203,13 +267,15 @@ uploadsRouter.get(
         file_path: string | null;
         version: number;
         is_active: boolean;
+        is_draft: boolean;
         uploaded_at: Date;
         processing_status: string;
+        processing_stage: string | null;
         error_message: string | null;
         processed_at: Date | null;
       }>(
-        `SELECT id, file_name, file_size_bytes, file_path, version, is_active,
-                uploaded_at, processing_status, error_message, processed_at
+        `SELECT id, file_name, file_size_bytes, file_path, version, is_active, is_draft,
+                uploaded_at, processing_status, processing_stage, error_message, processed_at
          FROM resumes WHERE id = $1 AND student_id = $2`,
         [req.params.id, studentId],
       );
@@ -223,17 +289,14 @@ uploadsRouter.get(
       const [extracted, skills] = await Promise.all([
         query<{
           raw_text: string;
-          structured_data: Record<string, unknown> & {
-            skills?: Array<{
-              name: string;
-              category: string;
-              frequency?: number;
-              confidence?: number;
-            }>;
-          };
+          structured_data: Record<string, unknown>;
           extraction_confidence: number | null;
+          enhanced_data: IntelligentResumeData | null;
+          validation_flags: unknown;
+          section_decisions: unknown;
         }>(
-          `SELECT raw_text, structured_data, extraction_confidence
+          `SELECT raw_text, structured_data, extraction_confidence,
+                  enhanced_data, validation_flags, section_decisions
            FROM extracted_resume_content WHERE resume_id = $1`,
           [row.id],
         ),
@@ -244,29 +307,30 @@ uploadsRouter.get(
       ]);
 
       const ext = extracted.rows[0];
-      const structured = ext?.structured_data ?? {};
-      const structuredSkills = (structured.skills ?? []).map((s) => ({
-        name: s.name,
-        category: s.category,
-        confidence: s.confidence ?? Math.min(1, 0.5 + (s.frequency ?? 1) * 0.05),
-        frequency: s.frequency ?? 1,
-      }));
-      const kb = row.file_size_bytes / 1024;
+      const structured =
+        (ext?.enhanced_data ? toLegacyStructuredView(ext.enhanced_data) : ext?.structured_data) ??
+        {};
+      const structuredSkills = skillsFromStructured(structured);
 
       res.json({
         id: row.id,
         fileName: row.file_name,
-        fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
+        fileSize: formatFileSize(row.file_size_bytes),
         version: row.version,
         active: row.is_active,
+        isDraft: row.is_draft,
         uploadedAt: row.uploaded_at.toISOString().split("T")[0],
         downloadUrl: resolvePublicFileUrl(row.file_path),
         processingStatus: row.processing_status,
+        processingStage: row.processing_stage,
         errorMessage: row.error_message,
         processedAt: row.processed_at ? new Date(row.processed_at).toISOString() : null,
         extractionConfidence: ext?.extraction_confidence ?? null,
         extractedSkills: structuredSkills,
         structuredData: structured,
+        enhancedData: ext?.enhanced_data ?? null,
+        validationFlags: ext?.validation_flags ?? [],
+        sectionDecisions: ext?.section_decisions ?? {},
         skills: skills.rows,
         skillsCount: skills.rows.length,
         hasExtractedText: Boolean(ext?.raw_text?.trim()),
@@ -274,6 +338,105 @@ uploadsRouter.get(
     } catch (err) {
       console.error("GET /students/me/resumes/:id error:", err);
       res.status(500).json({ error: "Failed to fetch resume status" });
+    }
+  },
+);
+
+/** PATCH /api/students/me/resumes/:id/draft — edit/accept/delete sections */
+uploadsRouter.patch(
+  "/me/resumes/:id/draft",
+  requireAuth,
+  requireStudent,
+  async (req: AuthRequest, res) => {
+    try {
+      const studentId = await getStudentId(req);
+      if (!studentId) {
+        res.status(404).json({ error: "Student profile not found" });
+        return;
+      }
+
+      const result = await userConfirmationService.patchDraft(
+        studentId,
+        String(req.params.id),
+        req.body ?? {},
+      );
+      res.json({
+        structuredData: toLegacyStructuredView(result.enhanced),
+        enhancedData: result.enhanced,
+        sectionDecisions: result.decisions,
+        validationFlags: result.flags,
+      });
+    } catch (err) {
+      if (err instanceof DraftNotReadyError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      console.error("PATCH /students/me/resumes/:id/draft error:", err);
+      res.status(500).json({ error: "Failed to update resume draft" });
+    }
+  },
+);
+
+/** POST /api/students/me/resumes/:id/confirm — replace single active resume */
+uploadsRouter.post(
+  "/me/resumes/:id/confirm",
+  requireAuth,
+  requireStudent,
+  async (req: AuthRequest, res) => {
+    try {
+      const studentId = await getStudentId(req);
+      if (!studentId) {
+        res.status(404).json({ error: "Student profile not found" });
+        return;
+      }
+
+      const result = await userConfirmationService.confirm(studentId, String(req.params.id));
+      res.json({
+        success: true,
+        resumeId: result.resumeId,
+        embeddingStatus: result.embeddingStatus,
+      });
+    } catch (err) {
+      if (err instanceof ConfirmBlockedError) {
+        res.status(400).json({
+          error: err.message,
+          validationFlags: err.flags,
+          needsUserInput: true,
+        });
+        return;
+      }
+      if (err instanceof DraftNotReadyError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      console.error("POST /students/me/resumes/:id/confirm error:", err);
+      res.status(500).json({ error: "Failed to confirm resume" });
+    }
+  },
+);
+
+/** POST /api/students/me/resumes/:id/reject — discard draft; keep active */
+uploadsRouter.post(
+  "/me/resumes/:id/reject",
+  requireAuth,
+  requireStudent,
+  async (req: AuthRequest, res) => {
+    try {
+      const studentId = await getStudentId(req);
+      if (!studentId) {
+        res.status(404).json({ error: "Student profile not found" });
+        return;
+      }
+
+      await userConfirmationService.reject(studentId, String(req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof DraftNotReadyError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      console.error("POST /students/me/resumes/:id/reject error:", err);
+      res.status(500).json({ error: "Failed to reject resume draft" });
     }
   },
 );
@@ -448,4 +611,3 @@ uploadsRouter.post(
     }
   },
 );
-

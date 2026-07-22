@@ -3,7 +3,24 @@
 import * as React from "react";
 import { api, type ResumeStatusDetail } from "@/lib/api";
 
-const TERMINAL = new Set(["completed", "failed", "skipped", "none"]);
+const TERMINAL = new Set([
+  "completed",
+  "confirmed",
+  "failed",
+  "skipped",
+  "none",
+  "rejected",
+  "awaiting_confirmation",
+]);
+
+const PROCESSING = new Set([
+  "pending",
+  "processing",
+  "extracting",
+  "enhancing",
+  "validating",
+  "embedding",
+]);
 
 /**
  * Poll resume processing status until terminal (or max attempts).
@@ -64,8 +81,8 @@ export function useResumeStatus(
     };
   }, [enabled, resumeId, intervalMs, fetchOnce]);
 
-  const isProcessing =
-    status?.processingStatus === "pending" || status?.processingStatus === "processing";
+  const isProcessing = status ? PROCESSING.has(status.processingStatus) : false;
+  const awaitsConfirmation = status?.processingStatus === "awaiting_confirmation";
 
-  return { status, loading, error, isProcessing, refresh: fetchOnce };
+  return { status, loading, error, isProcessing, awaitsConfirmation, refresh: fetchOnce };
 }

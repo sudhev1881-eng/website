@@ -23,10 +23,18 @@ function bucketName(): string {
   return getEnv().SUPABASE_STORAGE_BUCKET;
 }
 
-function buildObjectPath(category: FileCategory, ownerId: string, fileName: string): string {
+function buildObjectPath(
+  category: FileCategory,
+  ownerId: string,
+  fileName: string,
+  subfolder?: string,
+): string {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const uniqueName = `${Date.now()}-${safeName}`;
-  return `${category}/${ownerId}/${uniqueName}`;
+  const base = subfolder?.trim()
+    ? `${category}/${ownerId}/${subfolder.replace(/[^a-zA-Z0-9._/-]/g, "_")}`
+    : `${category}/${ownerId}`;
+  return `${base}/${uniqueName}`;
 }
 
 export function getPublicFileUrl(objectPath: string): string {
@@ -63,9 +71,10 @@ export async function saveFile(
   fileName: string,
   buffer: Buffer,
   contentType?: string,
+  options?: { subfolder?: string },
 ): Promise<{ relativePath: string; publicUrl: string; sizeBytes: number }> {
   await ensureStorageReady();
-  const relativePath = buildObjectPath(category, ownerId, fileName);
+  const relativePath = buildObjectPath(category, ownerId, fileName, options?.subfolder);
   const supabase = getSupabaseAdmin();
 
   const { error } = await supabase.storage.from(bucketName()).upload(relativePath, buffer, {
