@@ -34,9 +34,12 @@ Pipeline (`services/resume/`):
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_CHAT_MODEL=qwen2.5:7b
 OLLAMA_EMBED_MODEL=nomic-embed-text
+OLLAMA_TIMEOUT_MS=60000
 RESUME_AI_PROVIDER=ollama          # ollama | heuristic
 RESUME_REQUIRE_CONFIRMATION=false  # false = auto-apply; true = draft review UI
 RESUME_PROCESSING_ENABLED=true
+RESUME_OCR_ENABLED=true            # free Tesseract for scanned PDFs
+RESUME_OCR_MAX_PAGES=5
 ```
 
 `OPENAI_API_KEY` is **not** used for resume intelligence (optional Telegram NL only).
@@ -69,13 +72,25 @@ GET /api/students/me/resumes/ai-status
 
 Returns `ollamaReachable`, model names, `requireConfirmation`, and whether the pipeline fell back to heuristics.
 
+**Heuristic mode:** if Ollama is unreachable, the UI should show that AI is in heuristic fallback — embeddings/semantic search need Ollama; keyword admin search still works.
+
 ## Render / cloud networking
 
 Ollama does **not** run in-process on Render’s free web service. Options:
 
 1. Run the **API locally** beside Ollama (`OLLAMA_BASE_URL=http://127.0.0.1:11434`)
-2. Host Ollama on a reachable machine/VPS and set `OLLAMA_BASE_URL=https://your-ollama-host:11434`
-3. Set `RESUME_AI_PROVIDER=heuristic` or leave Ollama down — pipeline **gracefully falls back** to heuristics (upload still works)
+2. Host Ollama on a reachable machine/VPS and set `OLLAMA_BASE_URL` on Render
+3. Expose a home PC via **Cloudflare Tunnel** or **ngrok** to `localhost:11434`, then set that HTTPS URL as `OLLAMA_BASE_URL` on Render
+4. Set `RESUME_AI_PROVIDER=heuristic` or leave Ollama down — pipeline **gracefully falls back** to heuristics (upload still works)
+
+### Cloudflare Tunnel checklist (free)
+
+1. Install `cloudflared` and run `cloudflared tunnel --url http://127.0.0.1:11434` while `ollama serve` is running
+2. Copy the `https://….trycloudflare.com` URL into Render env as `OLLAMA_BASE_URL` (no trailing slash)
+3. Ensure models are pulled on that machine
+4. Redeploy / restart the API; hit `GET /api/students/me/resumes/ai-status` until `ollamaReachable: true`
+
+Health probes are cached ~30s to avoid hammering Ollama.
 
 ## Migration
 

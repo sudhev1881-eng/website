@@ -6,6 +6,9 @@ import { logger } from "../config/logger.js";
  * Prefers free `pdfjs-dist` (legacy Node build). If that path fails in this
  * Node runtime, falls back to free `pdf-parse` v2 (`PDFParse`), which also
  * uses pdf.js under the hood with a Node-friendly API.
+ *
+ * When extractable text is missing/too short (scanned PDF), optionally runs
+ * free Tesseract OCR on rendered pages (see RESUME_OCR_ENABLED).
  */
 export async function extractText(buffer: Buffer): Promise<string> {
   if (!buffer?.length) {
@@ -17,14 +20,53 @@ export async function extractText(buffer: Buffer): Promise<string> {
     throw new Error("File does not appear to be a PDF");
   }
 
+  let text = "";
+  let textError: Error | null = null;
+
   try {
-    return await extractWithPdfJs(buffer);
+    text = await extractWithPdfJs(buffer);
   } catch (err) {
+    textError = err as Error;
     logger.warn("pdfjs-dist extraction failed; falling back to pdf-parse", {
-      message: (err as Error).message,
+      message: textError.message,
     });
-    return extractWithPdfParse(buffer);
+    try {
+      text = await extractWithPdfParse(buffer);
+      textError = null;
+    } catch (err2) {
+      textError = err2 as Error;
+      text = "";
+    }
   }
+
+  if (text.trim().length >= 50) {
+    return text.trim();
+  }
+
+  // Scanned / image-only PDF — free OCR path
+  const ocrEnabled = process.env.RESUME_OCR_ENABLED !== "false";
+  if (!ocrEnabled) {
+    throw (
+      textError ??
+      new Error(
+        "PDF contained no extractable text (OCR disabled). Upload a text PDF or enable RESUME_OCR_ENABLED.",
+      )
+    );
+  }
+
+  const maxPages = Math.min(
+    10,
+    Math.max(1, Number(process.env.RESUME_OCR_MAX_PAGES ?? 5) || 5),
+  );
+
+  logger.info("PDF text too short; attempting OCR", {
+    textLength: text.trim().length,
+    maxPages,
+  });
+
+  const { extractPdfTextWithOcr } = await import("./pdf-ocr.service.js");
+  const ocr = await extractPdfTextWithOcr(buffer, maxPages);
+  return ocr.text;
 }
 
 async function extractWithPdfJs(buffer: Buffer): Promise<string> {

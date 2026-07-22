@@ -544,7 +544,7 @@ export async function handleFileImport(
   requireWrite(ctx.admin);
   const { detectAndParseFile } = await import("../telegramServices/importService.js");
   const parsed = await Promise.resolve(detectAndParseFile(filename, buffer));
-  if (parsed.format === "ocr_stub") {
+  if (parsed.format === "ocr_stub" || parsed.format === "ocr") {
     return formatError(parsed.warnings.join("\n"));
   }
   if (parsed.rows.length === 0) {

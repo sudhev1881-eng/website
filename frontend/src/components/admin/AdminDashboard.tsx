@@ -9,12 +9,14 @@ import {
   BarChart3,
   HardDrive,
   Settings,
+  Search,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { RequireAuth } from "@/components/layout/RequireAuth";
 import { StudentLinkLogo } from "@/components/brand/StudentLinkLogo";
 import { AdminOverview } from "./AdminOverview";
 import { AdminStudents } from "./AdminStudents";
+import { AdminTalentSearch } from "./AdminTalentSearch";
 import { AdminNfcCards } from "./AdminNfcCards";
 import { AdminUniversities } from "./AdminUniversities";
 import { AdminAnalytics } from "./AdminAnalytics";
@@ -25,6 +27,7 @@ import { useAuth } from "@/providers/auth-provider";
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "students", label: "Students", icon: Users },
+  { id: "talent-search", label: "Talent search", icon: Search },
   { id: "nfc-cards", label: "NFC Cards", icon: Nfc },
   { id: "universities", label: "Universities", icon: Building2 },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
@@ -35,6 +38,7 @@ const navItems = [
 const modules: Record<string, React.ReactNode> = {
   dashboard: <AdminOverview />,
   students: <AdminStudents />,
+  "talent-search": <AdminTalentSearch />,
   "nfc-cards": <AdminNfcCards />,
   universities: <AdminUniversities />,
   analytics: <AdminAnalytics />,

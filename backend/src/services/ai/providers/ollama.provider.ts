@@ -52,6 +52,9 @@ function extractJsonContent(raw: string): string {
   return trimmed;
 }
 
+const HEALTH_CACHE_MS = 30_000;
+let healthCache: { at: number; value: ProviderHealth } | null = null;
+
 /**
  * Ollama chat + embeddings over HTTP.
  * Model names come only from env (OLLAMA_CHAT_MODEL / OLLAMA_EMBED_MODEL).
@@ -61,7 +64,7 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
 
   async chat(messages: ChatMessage[], options?: ChatCompletionOptions): Promise<ChatCompletionResult> {
     const model = options?.model?.trim() || chatModel();
-    const timeoutMs = options?.timeoutMs ?? 90_000;
+    const timeoutMs = options?.timeoutMs ?? getEnv().OLLAMA_TIMEOUT_MS;
     const url = `${baseUrl()}/api/chat`;
 
     const res = await fetchWithTimeout(
@@ -106,7 +109,7 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
 
   async embed(texts: string[], options?: EmbeddingOptions): Promise<EmbeddingResult> {
     const model = options?.model?.trim() || embedModel();
-    const timeoutMs = options?.timeoutMs ?? 60_000;
+    const timeoutMs = options?.timeoutMs ?? getEnv().OLLAMA_TIMEOUT_MS;
     const embeddings: number[][] = [];
 
     // Ollama typically embeds one prompt at a time; batch sequentially for reliability.
@@ -171,32 +174,37 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
   }
 
   async health(): Promise<ProviderHealth> {
+    const cached = healthCache;
+    if (cached && Date.now() - cached.at < HEALTH_CACHE_MS) {
+      return cached.value;
+    }
     const started = Date.now();
     try {
       const res = await fetchWithTimeout(`${baseUrl()}/api/tags`, { method: "GET" }, 5_000);
-      if (!res.ok) {
-        return {
-          reachable: false,
-          provider: "ollama",
-          chatModel: chatModel(),
-          embedModel: embedModel(),
-          baseUrl: baseUrl(),
-          error: `HTTP ${res.status}`,
-          latencyMs: Date.now() - started,
-        };
-      }
-      return {
-        reachable: true,
-        provider: "ollama",
-        chatModel: chatModel(),
-        embedModel: embedModel(),
-        baseUrl: baseUrl(),
-        latencyMs: Date.now() - started,
-      };
+      const value: ProviderHealth = !res.ok
+        ? {
+            reachable: false,
+            provider: "ollama",
+            chatModel: chatModel(),
+            embedModel: embedModel(),
+            baseUrl: baseUrl(),
+            error: `HTTP ${res.status}`,
+            latencyMs: Date.now() - started,
+          }
+        : {
+            reachable: true,
+            provider: "ollama",
+            chatModel: chatModel(),
+            embedModel: embedModel(),
+            baseUrl: baseUrl(),
+            latencyMs: Date.now() - started,
+          };
+      healthCache = { at: Date.now(), value };
+      return value;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.debug("Ollama health check failed", { message });
-      return {
+      const value: ProviderHealth = {
         reachable: false,
         provider: "ollama",
         chatModel: chatModel(),
@@ -205,6 +213,8 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
         error: message,
         latencyMs: Date.now() - started,
       };
+      healthCache = { at: Date.now(), value };
+      return value;
     }
   }
 }

@@ -1,7 +1,10 @@
 /**
  * Parse CSV / TSV / TXT / Excel student import payloads.
- * PDF / image OCR is intentionally stubbed for MVP (see parseOcrStub).
+ * PDF / images use free Tesseract OCR when enabled (RESUME_OCR_ENABLED).
  */
+
+import { ocrImageBuffer } from "../../services/ocr.service.js";
+import { extractText as extractPdfText } from "../../services/pdf-extraction.service.js";
 
 export interface ImportStudentRow {
   name: string;
@@ -14,7 +17,7 @@ export interface ImportStudentRow {
 export interface ImportParseResult {
   rows: ImportStudentRow[];
   warnings: string[];
-  format: "csv" | "tsv" | "txt" | "excel" | "ocr_stub" | "unknown";
+  format: "csv" | "tsv" | "txt" | "excel" | "ocr" | "ocr_stub" | "unknown";
 }
 
 function splitCsvLine(line: string): string[] {
@@ -142,22 +145,63 @@ export async function parseExcelBuffer(buffer: Buffer): Promise<ImportParseResul
 }
 
 /**
- * TODO(production): Optional OCR path for PDF/images.
- * Suggested deps: `pdf-parse` + OCR service (e.g. Google Vision / Tesseract) behind a feature flag.
- * Do not enable by default — heavy infra and variable accuracy.
+ * Free OCR for PDF/images (Tesseract). Falls back to stub warnings on failure.
  */
+export async function parseWithOcr(buffer: Buffer, filename: string): Promise<ImportParseResult> {
+  if (process.env.RESUME_OCR_ENABLED === "false") {
+    return parseOcrStub(buffer, filename);
+  }
+
+  try {
+    const lower = filename.toLowerCase();
+    let text = "";
+    if (lower.endsWith(".pdf")) {
+      text = await extractPdfText(buffer);
+    } else {
+      text = await ocrImageBuffer(buffer);
+    }
+    if (!text || text.length < 20) {
+      return {
+        rows: [],
+        warnings: [`OCR found little text in "${filename}". Try a clearer image or CSV export.`],
+        format: "ocr",
+      };
+    }
+    const parsed = parseDelimitedText(text);
+    return {
+      ...parsed,
+      format: "ocr",
+      warnings: [
+        ...parsed.warnings,
+        `Parsed "${filename}" via free OCR (Tesseract) — verify rows before confirming.`,
+      ],
+    };
+  } catch (err) {
+    return {
+      rows: [],
+      warnings: [
+        `OCR failed for "${filename}": ${err instanceof Error ? err.message : String(err)}`,
+        "Export to CSV/Excel/TXT and re-upload if needed.",
+      ],
+      format: "ocr_stub",
+    };
+  }
+}
+
 export function parseOcrStub(_buffer: Buffer, filename: string): ImportParseResult {
   return {
     rows: [],
     warnings: [
-      `OCR for "${filename}" is not enabled in this MVP. Export to CSV/Excel/TXT and re-upload.`,
-      "TODO: wire optional PDF/image OCR behind OPENAI_API_KEY or a dedicated OCR provider.",
+      `OCR for "${filename}" is disabled (RESUME_OCR_ENABLED=false). Export to CSV/Excel/TXT and re-upload.`,
     ],
     format: "ocr_stub",
   };
 }
 
-export function detectAndParseFile(filename: string, buffer: Buffer): Promise<ImportParseResult> | ImportParseResult {
+export function detectAndParseFile(
+  filename: string,
+  buffer: Buffer,
+): Promise<ImportParseResult> | ImportParseResult {
   const lower = filename.toLowerCase();
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
     return parseExcelBuffer(buffer);
@@ -166,7 +210,7 @@ export function detectAndParseFile(filename: string, buffer: Buffer): Promise<Im
     return parseDelimitedText(buffer.toString("utf8"));
   }
   if (lower.endsWith(".pdf") || /\.(png|jpe?g|webp|gif)$/i.test(lower)) {
-    return parseOcrStub(buffer, filename);
+    return parseWithOcr(buffer, filename);
   }
   // Try text
   const asText = buffer.toString("utf8");

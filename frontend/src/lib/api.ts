@@ -296,6 +296,21 @@ export interface AdminStudent {
   joinedAt: string;
 }
 
+export interface AdminSearchResult {
+  studentId: string;
+  name: string;
+  username: string;
+  email: string | null;
+  university: string | null;
+  major: string | null;
+  status: string;
+  profileUrl: string;
+  score: number;
+  source: "vector" | "keyword" | "hybrid";
+  matchedSection: string;
+  snippet: string;
+}
+
 export interface AdminNfcCard {
   id: string;
   cardNumber: string;
@@ -630,6 +645,21 @@ export const api = {
     deleteAccount: () =>
       request<{ success: boolean }>("/students/me", { method: "DELETE" }),
 
+    exportData: async () => {
+      const token = getToken();
+      const res = await fetch(`${apiBase()}/students/me/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new ApiError(
+          (data as { error?: string }).error ?? `Export failed (${res.status})`,
+          res.status,
+        );
+      }
+      return res.json() as Promise<Record<string, unknown>>;
+    },
+
     createProject: (data: {
       title: string;
       description?: string;
@@ -683,6 +713,18 @@ export const api = {
 
   admin: {
     students: () => request<AdminStudent[]>("/admin/students"),
+
+    search: (q: string, opts?: { limit?: number; domains?: string[] }) => {
+      const params = new URLSearchParams({ q });
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      if (opts?.domains?.length) params.set("domains", opts.domains.join(","));
+      return request<{ query: string; count: number; results: AdminSearchResult[] }>(
+        `/admin/search?${params.toString()}`,
+      );
+    },
+
+    aiStatus: () =>
+      request<ResumeAiStatus & { ocrEnabled?: boolean; modeLabel?: string }>("/admin/ai-status"),
 
     createStudent: (data: {
       email: string;

@@ -20,6 +20,7 @@ export function StudentSettings() {
   const [newPassword, setNewPassword] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   if (!data) return null;
 
@@ -38,6 +39,25 @@ export function StudentSettings() {
       toast.error(err instanceof Error ? err.message : "Failed to change password");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const payload = await api.students.exportData();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `studentlink-export-${data.profile.username}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Data export downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -103,6 +123,21 @@ export function StudentSettings() {
               disabled
               helperText={`${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/u/${data.profile.username}`}
             />
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle>Download your data</CardTitle>
+            <CardDescription>
+              Export a portable JSON copy of your profile, skills, projects, experience, certificates,
+              and resume metadata (GDPR-style access request).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={handleExport} disabled={exporting}>
+              {exporting ? "Preparing…" : "Download JSON export"}
+            </Button>
           </CardContent>
         </Card>
 

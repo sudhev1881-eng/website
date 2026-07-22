@@ -132,6 +132,18 @@ const envSchema = z.object({
       if (v === undefined || v === "") return true;
       return v === "true" || v === "1";
     }),
+  /** Free Tesseract OCR for scanned PDFs / Telegram images. Default true. Heavy on RAM. */
+  RESUME_OCR_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === "") return true;
+      return v === "true" || v === "1";
+    }),
+  /** Max PDF pages to OCR (1–10). Default 5. */
+  RESUME_OCR_MAX_PAGES: z.coerce.number().int().min(1).max(10).default(5),
+  /** Ollama HTTP timeout for chat/embed (ms). */
+  OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

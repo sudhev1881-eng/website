@@ -23,6 +23,7 @@ export {
   type HybridSearchService,
   type SemanticSearchFilters,
   type SemanticSearchHit,
+  type AdminSearchResult,
 } from "./hybrid-search.service.js";
 export { StorageManager, storageManager } from "./storage-manager.js";
 export {

@@ -409,6 +409,105 @@ studentsRouter.post("/me/nfc/replacement-request", async (req: AuthRequest, res)
   }
 });
 
+/** GET /api/students/me/export — GDPR-style portable JSON of the student's data */
+studentsRouter.get("/me/export", async (req: AuthRequest, res) => {
+  try {
+    const studentId = await getStudentId(req);
+    if (!studentId) {
+      res.status(404).json({ error: "Student profile not found" });
+      return;
+    }
+
+    const [student, projects, skills, certificates, experience, resumes] = await Promise.all([
+      query(
+        `SELECT s.id, s.username, s.name, s.title, s.university, s.major, s.graduation_year,
+                s.bio, s.location, s.github, s.linkedin, s.portfolio, s.status,
+                s.profile_views, s.resume_downloads, s.nfc_taps, s.created_at, s.updated_at,
+                u.email
+         FROM students s
+         LEFT JOIN users u ON u.id = s.user_id
+         WHERE s.id = $1`,
+        [studentId],
+      ),
+      query(`SELECT title, description, tech, url, featured, sort_order FROM projects WHERE student_id = $1 ORDER BY sort_order`, [
+        studentId,
+      ]),
+      query(`SELECT name, level, category, sort_order FROM skills WHERE student_id = $1 ORDER BY sort_order`, [
+        studentId,
+      ]),
+      query(
+        `SELECT name, issuer, issued_date, url FROM certificates WHERE student_id = $1`,
+        [studentId],
+      ),
+      query(
+        `SELECT role, company, period, description, sort_order FROM experience WHERE student_id = $1 ORDER BY sort_order`,
+        [studentId],
+      ),
+      query(
+        `SELECT id, file_name, file_size_bytes, version, is_active, is_draft, processing_status,
+                uploaded_at, processed_at
+         FROM resumes WHERE student_id = $1 ORDER BY uploaded_at DESC`,
+        [studentId],
+      ),
+    ]);
+
+    if (!student.rowCount) {
+      res.status(404).json({ error: "Student profile not found" });
+      return;
+    }
+
+    const s = student.rows[0];
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      format: "studentlink-gdpr-export-v1",
+      profile: {
+        id: s.id,
+        username: s.username,
+        name: s.name,
+        title: s.title,
+        email: s.email,
+        university: s.university,
+        major: s.major,
+        graduationYear: s.graduation_year,
+        bio: s.bio,
+        location: s.location,
+        github: s.github,
+        linkedin: s.linkedin,
+        portfolio: s.portfolio,
+        status: s.status,
+        profileViews: s.profile_views,
+        resumeDownloads: s.resume_downloads,
+        nfcTaps: s.nfc_taps,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      },
+      projects: projects.rows,
+      skills: skills.rows,
+      certificates: certificates.rows,
+      experience: experience.rows,
+      resumes: resumes.rows.map((r) => ({
+        id: r.id,
+        fileName: r.file_name,
+        fileSizeBytes: r.file_size_bytes,
+        version: r.version,
+        isActive: r.is_active,
+        isDraft: r.is_draft,
+        processingStatus: r.processing_status,
+        uploadedAt: r.uploaded_at,
+        processedAt: r.processed_at,
+        // Intentionally omit storage paths / signed URLs for portability & safety
+      })),
+      note: "Storage object URLs are omitted. Download your resume file from the Resume page if needed.",
+    };
+
+    res.setHeader("Content-Disposition", `attachment; filename="studentlink-export-${s.username}.json"`);
+    res.json(payload);
+  } catch (err) {
+    console.error("GET /students/me/export error:", err);
+    res.status(500).json({ error: "Failed to export data" });
+  }
+});
+
 /** DELETE /api/students/me — delete own account */
 studentsRouter.delete("/me", async (req: AuthRequest, res) => {
   try {

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { query, withTransaction } from "../db/pool.js";
 import { requireAuth, requireAdmin, type AuthRequest } from "../middleware/supabase-auth.js";
 import { getStorageStats } from "../services/storage.js";
+import { hybridSearchService } from "../services/resume/hybrid-search.service.js";
 
 /** Remove a student row and its linked login user (if any) in one transaction. */
 async function deleteStudentAndUser(studentId: string): Promise<boolean> {
@@ -42,6 +43,57 @@ async function uniqueUsername(base: string): Promise<string> {
     username = `${base}-${i++}`;
   }
 }
+
+/** GET /api/admin/search?q=&limit= — hybrid talent search (semantic + keyword) */
+adminRouter.get("/search", async (req, res) => {
+  try {
+    const q = String(req.query.q ?? "").trim();
+    if (!q) {
+      res.status(400).json({ error: "Query parameter q is required" });
+      return;
+    }
+    const limitRaw = Number(req.query.limit ?? 20);
+    const limit = Number.isFinite(limitRaw) ? Math.min(50, Math.max(1, Math.floor(limitRaw))) : 20;
+    const domains = String(req.query.domains ?? "")
+      .split(",")
+      .map((d) => d.trim())
+      .filter(Boolean);
+
+    const results = await hybridSearchService.searchStudentsForAdmin(q, {
+      limit,
+      domains: domains.length ? domains : undefined,
+    });
+
+    res.json({
+      query: q,
+      count: results.length,
+      results,
+    });
+  } catch (err) {
+    console.error("GET /admin/search error:", err);
+    res.status(500).json({ error: "Search failed" });
+  }
+});
+
+/** GET /api/admin/ai-status — Ollama / resume AI reachability for admins */
+adminRouter.get("/ai-status", async (_req, res) => {
+  try {
+    const { getResumeAiStatus } = await import("../services/ai/ai-factory.js");
+    const { getEnv } = await import("../config/env.js");
+    const status = await getResumeAiStatus();
+    res.json({
+      ...status,
+      requireConfirmation: getEnv().RESUME_REQUIRE_CONFIRMATION,
+      ocrEnabled: getEnv().RESUME_OCR_ENABLED,
+      modeLabel: status.ollamaReachable
+        ? "Ollama connected"
+        : "Heuristic mode (Ollama unreachable)",
+    });
+  } catch (err) {
+    console.error("GET /admin/ai-status error:", err);
+    res.status(500).json({ error: "Failed to fetch AI status" });
+  }
+});
 
 /** GET /api/admin/students */
 adminRouter.get("/students", async (_req, res) => {

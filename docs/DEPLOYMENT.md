@@ -164,3 +164,17 @@ npm run db:setup
 npm run dev:api   # terminal 1
 npm run dev       # terminal 2
 ```
+
+### Resume OCR (scanned PDFs)
+
+Free Tesseract.js OCR runs when a PDF has little/no extractable text (`RESUME_OCR_ENABLED=true`, default).
+It renders up to `RESUME_OCR_MAX_PAGES` (default 5) pages — **CPU/RAM heavy** on Render free; disable with
+`RESUME_OCR_ENABLED=false` if the dyno OOMs.
+
+### Deferred (not in this deploy)
+
+- ClamAV / malware sandbox for uploads (magic-byte validation only today)
+- Sentry error tracking
+- Multi-tenant org isolation
+
+See also: [RESUME_AI_OLLAMA.md](./RESUME_AI_OLLAMA.md), [RESUME_PIPELINE.md](./RESUME_PIPELINE.md).
