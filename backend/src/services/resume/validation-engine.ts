@@ -5,15 +5,30 @@ import type { IntelligentResumeData, ValidationFlag } from "./types.js";
  * Never invents or auto-fills missing certification details.
  */
 export class ValidationEngine {
-  validate(data: IntelligentResumeData): ValidationFlag[] {
+  validate(
+    data: IntelligentResumeData,
+    options?: { rawTextLength?: number },
+  ): ValidationFlag[] {
     const flags: ValidationFlag[] = [];
+
+    const rawLen = options?.rawTextLength;
+    if (typeof rawLen === "number" && rawLen < 40) {
+      flags.push({
+        code: "extraction_sparse",
+        section: "summary",
+        message:
+          "Little text could be read from this file. Prefer a text PDF or DOCX; scanned PDFs may need a clearer scan.",
+        severity: "warning",
+        needsUserInput: false,
+      });
+    }
 
     if (!data.contact.emails.length && !data.contact.phones.length) {
       flags.push({
         code: "contact_sparse",
         section: "contact",
         message: "No email or phone detected — add contact details if missing.",
-        severity: "warning",
+        severity: "info",
         needsUserInput: false,
       });
     }
@@ -33,7 +48,7 @@ export class ValidationEngine {
         code: "experience_missing",
         section: "experience",
         message: "No work experience detected.",
-        severity: "warning",
+        severity: "info",
         needsUserInput: false,
       });
     }
@@ -53,7 +68,7 @@ export class ValidationEngine {
         code: "skills_missing",
         section: "skills",
         message: "No skills detected.",
-        severity: "warning",
+        severity: "info",
         needsUserInput: false,
       });
     }

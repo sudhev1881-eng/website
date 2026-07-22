@@ -87,7 +87,9 @@ adminRouter.get("/ai-status", async (_req, res) => {
       ocrEnabled: getEnv().RESUME_OCR_ENABLED,
       modeLabel: status.ollamaReachable
         ? "Ollama connected"
-        : "Heuristic mode (Ollama unreachable)",
+        : status.configuredProvider === "heuristic"
+          ? "Built-in parsing"
+          : "Built-in parsing (Ollama optional)",
     });
   } catch (err) {
     console.error("GET /admin/ai-status error:", err);

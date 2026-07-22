@@ -52,8 +52,33 @@ function extractJsonContent(raw: string): string {
   return trimmed;
 }
 
-const HEALTH_CACHE_MS = 30_000;
+const HEALTH_CACHE_OK_MS = 30_000;
+/** Cache unreachable results longer so Render free hosts don't re-probe every request. */
+const HEALTH_CACHE_FAIL_MS = 5 * 60_000;
 let healthCache: { at: number; value: ProviderHealth } | null = null;
+
+function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+}
+
+/**
+ * On hosted platforms (e.g. Render), a default localhost Ollama URL can never work.
+ * Skip the TCP probe so resume AI status / enhance stay fast in heuristic mode.
+ */
+function shouldSkipLocalOllamaProbe(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!isLoopbackHost(parsed.hostname)) return false;
+  } catch {
+    return false;
+  }
+  return (
+    Boolean(process.env.RENDER) ||
+    process.env.NODE_ENV === "production" ||
+    process.env.OLLAMA_SKIP_LOCALHOST === "true"
+  );
+}
 
 /**
  * Ollama chat + embeddings over HTTP.
@@ -175,19 +200,36 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
 
   async health(): Promise<ProviderHealth> {
     const cached = healthCache;
-    if (cached && Date.now() - cached.at < HEALTH_CACHE_MS) {
-      return cached.value;
+    if (cached) {
+      const ttl = cached.value.reachable ? HEALTH_CACHE_OK_MS : HEALTH_CACHE_FAIL_MS;
+      if (Date.now() - cached.at < ttl) return cached.value;
     }
     const started = Date.now();
+    const root = baseUrl();
+
+    if (shouldSkipLocalOllamaProbe(root)) {
+      const value: ProviderHealth = {
+        reachable: false,
+        provider: "ollama",
+        chatModel: chatModel(),
+        embedModel: embedModel(),
+        baseUrl: root,
+        error: "localhost Ollama skipped on hosted runtime",
+        latencyMs: 0,
+      };
+      healthCache = { at: Date.now(), value };
+      return value;
+    }
+
     try {
-      const res = await fetchWithTimeout(`${baseUrl()}/api/tags`, { method: "GET" }, 5_000);
+      const res = await fetchWithTimeout(`${root}/api/tags`, { method: "GET" }, 2_500);
       const value: ProviderHealth = !res.ok
         ? {
             reachable: false,
             provider: "ollama",
             chatModel: chatModel(),
             embedModel: embedModel(),
-            baseUrl: baseUrl(),
+            baseUrl: root,
             error: `HTTP ${res.status}`,
             latencyMs: Date.now() - started,
           }
@@ -196,7 +238,7 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
             provider: "ollama",
             chatModel: chatModel(),
             embedModel: embedModel(),
-            baseUrl: baseUrl(),
+            baseUrl: root,
             latencyMs: Date.now() - started,
           };
       healthCache = { at: Date.now(), value };
@@ -209,7 +251,7 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
         provider: "ollama",
         chatModel: chatModel(),
         embedModel: embedModel(),
-        baseUrl: baseUrl(),
+        baseUrl: root,
         error: message,
         latencyMs: Date.now() - started,
       };

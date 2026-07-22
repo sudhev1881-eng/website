@@ -64,9 +64,23 @@ export async function extractText(buffer: Buffer): Promise<string> {
     maxPages,
   });
 
-  const { extractPdfTextWithOcr } = await import("./pdf-ocr.service.js");
-  const ocr = await extractPdfTextWithOcr(buffer, maxPages);
-  return ocr.text;
+  try {
+    const { extractPdfTextWithOcr } = await import("./pdf-ocr.service.js");
+    const ocr = await extractPdfTextWithOcr(buffer, maxPages);
+    return ocr.text;
+  } catch (ocrErr) {
+    // Soft-fail: never hard-fail the resume pipeline because OCR OOM'd / timed out
+    // on a free host. Heuristic parse still runs on whatever text we have.
+    const message = ocrErr instanceof Error ? ocrErr.message : String(ocrErr);
+    logger.warn("PDF OCR failed; continuing with partial text extract", {
+      message,
+      textLength: text.trim().length,
+    });
+    const trimmed = text.trim();
+    if (trimmed.length > 0) return trimmed;
+    // Empty extract — let the pipeline save a draft with validation flags instead of failing.
+    return "";
+  }
 }
 
 async function extractWithPdfJs(buffer: Buffer): Promise<string> {

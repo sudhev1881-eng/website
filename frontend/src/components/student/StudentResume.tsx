@@ -71,7 +71,7 @@ function processingLabel(status: string | undefined, autoApply?: boolean): strin
     case "extracting":
       return "Extracting…";
     case "enhancing":
-      return "AI analyzing…";
+      return "Analyzing…";
     case "validating":
       return "Validating…";
     case "awaiting_confirmation":
@@ -172,10 +172,10 @@ function AiProviderHint({ status }: { status: ResumeAiStatus | null }) {
   return (
     <p className="text-xs text-muted-foreground">
       {connected
-        ? `AI: Ollama connected (${status.chatModel ?? "chat"})`
+        ? `Enhanced AI on (${status.chatModel ?? "chat"})`
         : status.fellBackToHeuristic || status.activeProvider === "heuristic"
-          ? "AI: heuristic fallback (Ollama unavailable)"
-          : "AI: checking Ollama…"}
+          ? "Using built-in resume parsing"
+          : "Checking resume parsing…"}
     </p>
   );
 }
@@ -303,12 +303,8 @@ function DraftReviewPanel({
   const confirm = async () => {
     setBusy(true);
     try {
-      const result = await api.students.confirmResumeDraft(draft.id);
-      toast.success(
-        result.embeddingStatus === "skipped_no_key"
-          ? "Resume confirmed (embeddings skipped — no API key)"
-          : "Resume confirmed — profile updated",
-      );
+      await api.students.confirmResumeDraft(draft.id);
+      toast.success("Resume confirmed — profile updated");
       onUpdated({ ...draft, processingStatus: "confirmed", isDraft: false, active: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Confirm failed";
@@ -701,7 +697,7 @@ export function StudentResume() {
       toast.success(
         status?.requireConfirmation
           ? "Resume uploaded — processing draft for your review…"
-          : "Resume uploaded — AI is updating your profile…",
+          : "Resume uploaded — updating your profile…",
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
@@ -737,7 +733,7 @@ export function StudentResume() {
           description={
             requireConfirmation
               ? "Upload one resume. Review extracted sections before they update your profile."
-              : "Upload one resume. AI fills your public profile automatically."
+              : "Upload one resume. We extract sections and fill your public profile automatically."
           }
         />
         <Card className="shadow-card">
@@ -894,7 +890,7 @@ export function StudentResume() {
                   <div className="flex items-center gap-3 py-2 text-sm text-muted-foreground">
                     {isProcessing ? <Spinner /> : null}
                     {isProcessing
-                      ? "Extracting, analyzing, and applying sections to your profile…"
+                      ? "Extracting and applying sections to your profile…"
                       : "Waiting for status…"}
                   </div>
                 </>
@@ -906,8 +902,8 @@ export function StudentResume() {
                 <>
                   {!requireConfirmation ? (
                     <p className="text-sm text-muted-foreground">
-                      Automatic apply needed a review. Accept or confirm sections below to finish updating
-                      your profile.
+                      We need a quick review before finishing. Confirm sections below to update your
+                      profile — common for scanned PDFs with little readable text.
                     </p>
                   ) : null}
                   <DraftReviewPanel

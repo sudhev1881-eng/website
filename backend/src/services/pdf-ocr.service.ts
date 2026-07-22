@@ -52,11 +52,7 @@ export async function extractPdfTextWithOcr(
   }
 
   const text = parts.join("\n\n").replace(/\s+/g, " ").trim();
-  if (text.length < 40) {
-    throw new Error(
-      "OCR could not read enough text from this scanned PDF — try a clearer scan or a text PDF",
-    );
-  }
-
+  // Return whatever we got — caller decides soft vs hard failure.
+  // Throwing here used to mark the entire resume upload as "failed".
   return { text, pagesOcrd: pageCount, usedOcr: true };
 }

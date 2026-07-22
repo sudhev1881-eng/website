@@ -29,7 +29,23 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
     const buffer = await downloadFile(filePath);
 
     await databaseManager.setStage(resumeId, studentId, "extracting", "extracting");
-    const parsed = await resumeParser.parseBuffer(buffer, fileName ?? filePath);
+    let parsed;
+    try {
+      parsed = await resumeParser.parseBuffer(buffer, fileName ?? filePath);
+    } catch (extractErr) {
+      const extractMessage =
+        extractErr instanceof Error ? extractErr.message : "Could not read resume text";
+      logger.warn("Resume text extraction failed; saving empty draft for review", {
+        resumeId,
+        studentId,
+        message: extractMessage,
+      });
+      parsed = {
+        rawText: "",
+        data: emptyIntelligentResumeData(),
+        extractionConfidence: 0,
+      };
+    }
 
     if (!parsed.rawText.trim()) {
       logger.warn("Empty resume text extract", { resumeId, studentId });
@@ -39,7 +55,9 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
     const enhancement = await aiEnhancementEngine.enhance(parsed.data, parsed.rawText);
 
     await databaseManager.setStage(resumeId, studentId, "validating", "validating");
-    const flags = validationEngine.validate(enhancement.data);
+    const flags = validationEngine.validate(enhancement.data, {
+      rawTextLength: parsed.rawText.trim().length,
+    });
 
     await databaseManager.saveDraftExtraction({
       resumeId,
@@ -51,6 +69,7 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
     });
 
     const requireConfirmation = getEnv().RESUME_REQUIRE_CONFIRMATION;
+    const sparseExtract = parsed.rawText.trim().length < 40;
 
     await databaseManager.setStage(
       resumeId,
@@ -59,7 +78,7 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
       "awaiting_confirmation",
     );
 
-    if (requireConfirmation) {
+    if (requireConfirmation || sparseExtract) {
       logger.info("Intelligent resume pipeline awaiting confirmation", {
         resumeId,
         studentId,
@@ -68,6 +87,7 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
         skippedReason: enhancement.skippedReason,
         flagCount: flags.length,
         parser: enhancement.data.parser,
+        sparseExtract,
       });
       return;
     }

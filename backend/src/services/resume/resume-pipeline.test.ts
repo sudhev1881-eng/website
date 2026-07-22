@@ -73,6 +73,11 @@ describe("ValidationEngine", () => {
     assert.equal(certFlags[0].needsUserInput, true);
   });
 
+  it("flags sparse extraction when raw text is too short", () => {
+    const flags = new ValidationEngine().validate(sampleData(), { rawTextLength: 10 });
+    assert.ok(flags.some((f) => f.code === "extraction_sparse"));
+  });
+
   it("clears blocking flags when cert fields are filled", () => {
     const engine = new ValidationEngine();
     const data = sampleData({

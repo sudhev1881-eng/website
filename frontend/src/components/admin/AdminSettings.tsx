@@ -72,8 +72,8 @@ export function AdminSettings() {
               Resume AI (Ollama)
             </CardTitle>
             <CardDescription>
-              Local/self-hosted Ollama for extraction and embeddings. If unreachable, the API uses
-              free heuristics (no paid OpenAI). See docs/RESUME_AI_OLLAMA.md.
+              Optional Ollama for richer extraction and embeddings. Without it, built-in parsing still
+              fills profile sections. See docs/RESUME_AI_OLLAMA.md.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -81,24 +81,30 @@ export function AdminSettings() {
               <Spinner />
             ) : aiStatus ? (
               <>
-                <Badge variant={aiStatus.ollamaReachable ? "success" : "warning"}>
+                <Badge variant={aiStatus.ollamaReachable ? "success" : "default"}>
                   {aiStatus.modeLabel ??
-                    (aiStatus.ollamaReachable ? "Ollama connected" : "Heuristic mode")}
+                    (aiStatus.ollamaReachable ? "Ollama connected" : "Built-in parsing")}
                 </Badge>
                 <p className="text-sm text-muted-foreground">
                   Provider: {aiStatus.activeProvider}
-                  {aiStatus.fellBackToHeuristic ? " (fell back)" : ""}
+                  {aiStatus.fellBackToHeuristic && aiStatus.configuredProvider === "ollama"
+                    ? " (built-in)"
+                    : ""}
                   {aiStatus.chatModel ? ` · chat ${aiStatus.chatModel}` : ""}
                   {aiStatus.embedModel ? ` · embed ${aiStatus.embedModel}` : ""}
                 </p>
-                {aiStatus.baseUrl && (
+                {aiStatus.baseUrl && aiStatus.ollamaReachable && (
                   <p className="truncate text-xs text-muted-foreground">Base: {aiStatus.baseUrl}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
                   OCR: {aiStatus.ocrEnabled === false ? "disabled" : "enabled"} · Confirmation:{" "}
                   {aiStatus.requireConfirmation ? "required" : "auto-apply"}
                 </p>
-                {aiStatus.error && <p className="text-xs text-amber-700">{aiStatus.error}</p>}
+                {aiStatus.error && aiStatus.ollamaReachable === false && aiStatus.configuredProvider === "ollama" ? (
+                  <p className="text-xs text-muted-foreground">
+                    Ollama not connected — using built-in parsing.
+                  </p>
+                ) : null}
               </>
             ) : (
               <p className="text-sm text-muted-foreground">Could not load AI status.</p>
