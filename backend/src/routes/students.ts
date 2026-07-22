@@ -2,6 +2,7 @@ import { Router } from "express";
 import { query, withTransaction } from "../db/pool.js";
 import { requireAuth, requireStudent, type AuthRequest } from "../middleware/supabase-auth.js";
 import { getStudentAnalytics } from "../services/analytics.js";
+import { resolvePublicFileUrl } from "../services/storage.js";
 
 export const studentsRouter = Router();
 
@@ -21,7 +22,7 @@ function formatResume(row: {
     fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
     uploadedAt: row.uploaded_at.toISOString().split("T")[0],
     version: row.version,
-    downloadUrl: row.file_path ? `/api/uploads/${row.file_path}` : null,
+    downloadUrl: resolvePublicFileUrl(row.file_path),
   };
 }
 

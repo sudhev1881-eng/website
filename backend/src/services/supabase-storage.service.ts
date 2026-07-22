@@ -88,6 +88,25 @@ export async function deleteFile(relativePath: string | null | undefined): Promi
   await supabase.storage.from(bucketName()).remove([relativePath]);
 }
 
+/** Download an object via the service-role client (not a public/anon URL guess). */
+export async function downloadFile(relativePath: string): Promise<Buffer> {
+  const path = relativePath.replace(/^\/api\/uploads\//, "").replace(/^\//, "");
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.storage.from(bucketName()).download(path);
+  if (error || !data) {
+    throw new Error(error?.message ?? `Failed to download storage object: ${path}`);
+  }
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/** Resolve a stored relative path (or legacy /api/uploads/… URL) to a public HTTPS URL. */
+export function resolvePublicFileUrl(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
+  if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;
+  const path = filePath.replace(/^\/api\/uploads\//, "").replace(/^\//, "");
+  return getPublicFileUrl(path);
+}
+
 export interface StorageBreakdownItem {
   type: string;
   category: FileCategory;

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Download, History } from "lucide-react";
+import { FileText, Download, History, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,18 +12,59 @@ import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
 import { useStudentData } from "@/providers/student-data-provider";
 import { api, fileUrl, type ResumeVersion } from "@/lib/api";
+import { useResumeStatus } from "@/hooks/useResumeStatus";
+
+function processingBadgeVariant(
+  status: string | undefined,
+): "default" | "primary" | "success" | "error" | "warning" {
+  switch (status) {
+    case "completed":
+      return "success";
+    case "failed":
+      return "error";
+    case "skipped":
+      return "warning";
+    case "pending":
+    case "processing":
+      return "primary";
+    default:
+      return "default";
+  }
+}
+
+function processingLabel(status: string | undefined): string {
+  switch (status) {
+    case "pending":
+      return "Queued";
+    case "processing":
+      return "Extracting skills…";
+    case "completed":
+      return "Skills extracted";
+    case "failed":
+      return "Extraction failed";
+    case "skipped":
+      return "PDF only";
+    default:
+      return "Not processed";
+  }
+}
 
 export function StudentResume() {
   const { data, refresh } = useStudentData();
   const [history, setHistory] = React.useState<ResumeVersion[]>([]);
   const [historyLoading, setHistoryLoading] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
+  const [activeResumeId, setActiveResumeId] = React.useState<string | null>(null);
 
   const loadHistory = React.useCallback(() => {
     setHistoryLoading(true);
     api.students
       .resumeHistory()
-      .then(setHistory)
+      .then((rows) => {
+        setHistory(rows);
+        const active = rows.find((r) => r.active) ?? rows[0];
+        if (active) setActiveResumeId(active.id);
+      })
       .catch(console.error)
       .finally(() => setHistoryLoading(false));
   }, []);
@@ -32,15 +73,33 @@ export function StudentResume() {
     if (data?.resume) loadHistory();
   }, [data?.resume, loadHistory]);
 
+  const { status: resumeStatus, isProcessing } = useResumeStatus(activeResumeId, {
+    enabled: Boolean(activeResumeId),
+  });
+
+  React.useEffect(() => {
+    if (resumeStatus?.processingStatus === "completed") {
+      void refresh();
+      loadHistory();
+    }
+  }, [resumeStatus?.processingStatus, refresh, loadHistory]);
+
   const handleUpload = async (files: File[]) => {
     const file = files[0];
     if (!file) return;
     setUploading(true);
     try {
-      await api.students.uploadResume(file);
+      const uploaded = await api.students.uploadResume(file);
+      if (uploaded.id) setActiveResumeId(uploaded.id);
       await refresh();
       loadHistory();
-      toast.success("Resume uploaded");
+      if (uploaded.processingStatus === "skipped") {
+        toast.success("Resume uploaded (skill extraction supports PDF only)");
+      } else if (uploaded.processingStatus === "pending") {
+        toast.success("Resume uploaded — extracting skills…");
+      } else {
+        toast.success("Resume uploaded");
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -57,6 +116,13 @@ export function StudentResume() {
     window.open(resolved, "_blank");
   };
 
+  const processingStatus =
+    resumeStatus?.processingStatus ??
+    history.find((h) => h.id === activeResumeId)?.processingStatus;
+
+  const extractedSkills = resumeStatus?.extractedSkills ?? [];
+  const profileSkills = resumeStatus?.skills ?? data?.skills ?? [];
+
   if (!data?.resume) {
     return (
       <div>
@@ -71,7 +137,7 @@ export function StudentResume() {
               <Upload
                 label="Upload resume"
                 accept=".pdf,.doc,.docx"
-                helperText="PDF recommended, max 10MB"
+                helperText="PDF recommended for free skill extraction · max 10MB"
                 onUpload={handleUpload}
               />
             )}
@@ -112,8 +178,25 @@ export function StudentResume() {
                   {studentResume.uploadedAt}
                 </p>
               </div>
-              <Badge variant="success">Active</Badge>
+              <div className="flex flex-col items-end gap-1">
+                <Badge variant="success">Active</Badge>
+                {processingStatus ? (
+                  <Badge variant={processingBadgeVariant(processingStatus)}>
+                    {isProcessing ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Spinner size="sm" />
+                        {processingLabel(processingStatus)}
+                      </span>
+                    ) : (
+                      processingLabel(processingStatus)
+                    )}
+                  </Badge>
+                ) : null}
+              </div>
             </div>
+            {resumeStatus?.errorMessage ? (
+              <p className="text-sm text-muted-foreground">{resumeStatus.errorMessage}</p>
+            ) : null}
             <div className="flex gap-2">
               <Button onClick={() => handleDownload(studentResume.downloadUrl)}>
                 <Download className="h-4 w-4" />
@@ -141,9 +224,42 @@ export function StudentResume() {
               <Upload
                 label="Upload resume"
                 accept=".pdf,.doc,.docx"
-                helperText="PDF recommended, max 10MB"
+                helperText="PDF recommended for free skill extraction · max 10MB"
                 onUpload={handleUpload}
               />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-card lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Extracted Skills
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isProcessing ? (
+              <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
+                <Spinner />
+                Parsing your PDF and matching skills…
+              </div>
+            ) : extractedSkills.length > 0 || profileSkills.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {(extractedSkills.length > 0
+                  ? extractedSkills.map((s) => s.name)
+                  : profileSkills.map((s) => s.name)
+                ).map((name) => (
+                  <Badge key={name} variant="secondary">
+                    {name}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Upload a PDF resume to automatically detect skills. DOC/DOCX uploads are saved but
+                not parsed.
+              </p>
             )}
           </CardContent>
         </Card>
@@ -171,16 +287,26 @@ export function StudentResume() {
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <div>
                         <p className="text-sm font-medium">{v.fileName}</p>
-                        <p className="text-xs text-muted-foreground">v{v.version} · {v.uploadedAt}</p>
+                        <p className="text-xs text-muted-foreground">
+                          v{v.version} · {v.uploadedAt}
+                          {typeof v.skillsCount === "number" ? ` · ${v.skillsCount} skills` : ""}
+                        </p>
                       </div>
                     </div>
-                    {v.active ? (
-                      <Badge variant="primary">Current</Badge>
-                    ) : (
-                      <Button variant="ghost" size="sm" onClick={() => handleDownload(v.downloadUrl)}>
-                        Download
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {v.processingStatus ? (
+                        <Badge variant={processingBadgeVariant(v.processingStatus)}>
+                          {processingLabel(v.processingStatus)}
+                        </Badge>
+                      ) : null}
+                      {v.active ? (
+                        <Badge variant="primary">Current</Badge>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => handleDownload(v.downloadUrl)}>
+                          Download
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

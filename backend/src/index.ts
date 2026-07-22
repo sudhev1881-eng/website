@@ -18,6 +18,10 @@ import { getPool } from "./db/pool.js";
 import { startTelegramBot, telegramRouter } from "./telegram/index.js";
 import { registerBotCommands } from "./telegram/telegramCommands.js";
 import { getTelegramBot } from "./telegram/telegramBot.js";
+import {
+  startResumeProcessingWorker,
+  stopResumeProcessingWorker,
+} from "./queues/resume-processing.queue.js";
 
 const app = express();
 
@@ -69,6 +73,14 @@ async function start() {
     logger.info("NFC cloud mode — physical reader disabled; cards managed as profile URLs in database");
   }
 
+  try {
+    await startResumeProcessingWorker();
+  } catch (err) {
+    logger.warn("Resume processing worker failed to start — uploads still work", {
+      message: (err as Error).message,
+    });
+  }
+
   // Listen BEFORE registering the Telegram webhook. setWebhook causes Telegram to
   // POST immediately; if the port is not open yet, Render returns 404 and the bot
   // appears dead until the next successful delivery.
@@ -107,6 +119,18 @@ async function start() {
       message: (err as Error).message,
     });
   }
+
+  const shutdown = async (signal: string) => {
+    logger.info("Shutting down", { signal });
+    try {
+      await stopResumeProcessingWorker();
+    } catch {
+      /* ignore */
+    }
+    process.exit(0);
+  };
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
 }
 
 start();

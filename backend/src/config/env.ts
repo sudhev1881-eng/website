@@ -81,6 +81,28 @@ const envSchema = z.object({
     .optional()
     .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  /** Optional Redis for BullMQ resume processing. Without it, jobs run in-process. */
+  REDIS_URL: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  REDIS_HOST: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  REDIS_PORT: z.coerce.number().int().positive().optional(),
+  REDIS_PASSWORD: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+  /** When false, skip enqueueing resume extraction jobs. Default true. */
+  RESUME_PROCESSING_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === "") return true;
+      return v === "true" || v === "1";
+    }),
 });
 
 export type Env = z.infer<typeof envSchema>;

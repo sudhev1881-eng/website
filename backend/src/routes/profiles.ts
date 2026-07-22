@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { query } from "../db/pool.js";
 import { logProfileEvent } from "../services/analytics.js";
+import { resolvePublicFileUrl } from "../services/storage.js";
 
 export const profilesRouter = Router();
 
@@ -18,7 +19,7 @@ function formatResume(row: {
     fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
     uploadedAt: row.uploaded_at.toISOString().split("T")[0],
     version: row.version,
-    downloadUrl: row.file_path ? `/api/uploads/${row.file_path}` : null,
+    downloadUrl: resolvePublicFileUrl(row.file_path),
   };
 }
 
@@ -62,7 +63,7 @@ profilesRouter.get("/:slug/resume", async (req, res) => {
     query(`UPDATE students SET resume_downloads = resume_downloads + 1 WHERE id = $1`, [studentId]).catch(() => {});
     logProfileEvent(studentId, "resume_download", "public").catch(() => {});
 
-    res.json({ downloadUrl: `/api/uploads/${resume.rows[0].file_path}` });
+    res.json({ downloadUrl: resolvePublicFileUrl(resume.rows[0].file_path) });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch resume" });
   }

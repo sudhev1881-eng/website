@@ -100,6 +100,15 @@ Or: **New → Blueprint** → select this repo (uses `render.yaml`).
 | `TELEGRAM_MODE` | `webhook` on Render (default in production) |
 | `TELEGRAM_SUPER_ADMIN_IDS` | Optional bootstrap Telegram user IDs (comma-separated) |
 | `OPENAI_API_KEY` | Optional — NL assist only; commands work offline without it |
+| `RESUME_PROCESSING_ENABLED` | `true` (default) to extract skills from PDF resumes after upload |
+| `REDIS_URL` | Optional — enables BullMQ for resume jobs; without Redis, processing runs in-process |
+
+#### Resume skill extraction
+1. Run migration `009_resume_extraction.sql` (`npm run db:migrate`).
+2. Upload a **PDF** from the student Resume page. DOC/DOCX still upload, but skill extraction is skipped.
+3. Status polls via `GET /api/students/me/resumes/:id` (`pending` → `processing` → `completed` / `failed`).
+4. Matched skills are upserted into the existing per-student `skills` table (no duplicate names).
+5. Redis is optional: set `REDIS_URL` for BullMQ workers; otherwise the API uses `setImmediate` with the same processor.
 
 #### Telegram Admin Assistant setup
 1. Run migrations (`npm run db:migrate`) so `telegram_*` tables exist.

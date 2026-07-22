@@ -274,6 +274,28 @@ export interface ResumeVersion {
   active: boolean;
   uploadedAt: string;
   downloadUrl: string | null;
+  processingStatus?: string;
+  errorMessage?: string | null;
+  processedAt?: string | null;
+  skillsCount?: number;
+}
+
+export interface ResumeStatusDetail {
+  id: string;
+  fileName: string;
+  fileSize: string;
+  version: number;
+  active: boolean;
+  uploadedAt: string;
+  downloadUrl: string | null;
+  processingStatus: string;
+  errorMessage: string | null;
+  processedAt: string | null;
+  extractionConfidence: number | null;
+  extractedSkills: Array<{ name: string; category: string; confidence: number }>;
+  skills: Array<{ name: string; level: number; category: string }>;
+  skillsCount: number;
+  hasExtractedText: boolean;
 }
 
 export interface NfcReaderStatus {
@@ -366,9 +388,19 @@ export const api = {
       request("/students/me", { method: "PATCH", body: JSON.stringify(data) }),
 
     uploadResume: (file: File) =>
-      uploadRequest<StudentDashboardData["resume"] & { id: string }>("/students/me/resume", file),
+      uploadRequest<
+        StudentDashboardData["resume"] & {
+          id: string;
+          status?: string;
+          processingStatus?: string;
+          errorMessage?: string | null;
+        }
+      >("/students/me/resume", file),
 
     resumeHistory: () => request<ResumeVersion[]>("/students/me/resumes"),
+
+    resumeStatus: (resumeId: string) =>
+      request<ResumeStatusDetail>(`/students/me/resumes/${resumeId}`),
 
     uploadAvatar: (file: File) =>
       uploadRequest<{ avatarUrl: string }>("/students/me/avatar", file),
