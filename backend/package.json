@@ -13,7 +13,7 @@
     "db:setup": "npm run db:migrate && npm run db:seed",
     "db:pull": "prisma db pull",
     "prisma:generate": "prisma generate",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "node --import tsx --test src/**/*.test.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

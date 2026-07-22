@@ -1,5 +1,6 @@
-import { describe, it } from "node:test";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import { resetEnvCache } from "../../config/env.js";
 import { parseIntent, isConfirmText, isCancelText } from "../telegramServices/intentParser.js";
 import { parseDelimitedText } from "../telegramServices/importService.js";
 import { TelegramRateLimiter } from "../telegramUtils/rateLimit.js";
@@ -7,6 +8,17 @@ import { escapeHtml, formatStudentCreated } from "../telegramUtils/format.js";
 import { assertCanRunIntent, isDestructiveIntent } from "../telegramMiddleware.js";
 import { TelegramAuthError } from "../telegramAuth.js";
 import type { TelegramAdminRecord } from "../telegramTypes.js";
+
+before(() => {
+  process.env.DATABASE_URL ??= "postgresql://localhost/studentlink";
+  process.env.SUPABASE_URL ??= "https://example.supabase.co";
+  process.env.SUPABASE_ANON_KEY ??= "anon";
+  process.env.SUPABASE_SERVICE_ROLE_KEY ??= "service";
+  process.env.JWT_SECRET ??= "x".repeat(32);
+  process.env.CORS_ORIGIN ??= "http://localhost:3000";
+  process.env.SITE_URL ??= "http://localhost:3000";
+  resetEnvCache();
+});
 
 describe("parseIntent", () => {
   it("parses /create command with CSV-like args", () => {

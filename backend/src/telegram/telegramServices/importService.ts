@@ -3,9 +3,6 @@
  * PDF / images use free Tesseract OCR when enabled (RESUME_OCR_ENABLED).
  */
 
-import { ocrImageBuffer } from "../../services/ocr.service.js";
-import { extractText as extractPdfText } from "../../services/pdf-extraction.service.js";
-
 export interface ImportStudentRow {
   name: string;
   email?: string;
@@ -156,8 +153,10 @@ export async function parseWithOcr(buffer: Buffer, filename: string): Promise<Im
     const lower = filename.toLowerCase();
     let text = "";
     if (lower.endsWith(".pdf")) {
+      const { extractText: extractPdfText } = await import("../../services/pdf-extraction.service.js");
       text = await extractPdfText(buffer);
     } else {
+      const { ocrImageBuffer } = await import("../../services/ocr.service.js");
       text = await ocrImageBuffer(buffer);
     }
     if (!text || text.length < 20) {

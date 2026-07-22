@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  NODE_ENV: test
+  # Satisfy backend getEnv() for unit tests that touch SITE_URL / AI / Telegram helpers
+  DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+  SUPABASE_URL: https://example.supabase.co
+  SUPABASE_ANON_KEY: anon-key-for-ci
+  SUPABASE_SERVICE_ROLE_KEY: service-role-key-for-ci
+  JWT_SECRET: "ci-jwt-secret-at-least-32-characters-long"
+  CORS_ORIGIN: http://localhost:3000
+  SITE_URL: http://localhost:3000
+  OLLAMA_BASE_URL: http://127.0.0.1:11434
+  RESUME_AI_PROVIDER: heuristic
+  TELEGRAM_ENABLED: "false"
+
 jobs:
   backend:
     name: Backend build & test
@@ -26,11 +40,8 @@ jobs:
       - name: Typecheck
         run: npm run lint
       - name: Unit tests
-        run: npm test
-        env:
-          # Minimal env so getEnv() is not required for pure unit tests;
-          # tests that need DB should skip or mock.
-          NODE_ENV: test
+        # node --import tsx is more reliable than the tsx bin shim in workspaces CI
+        run: node --import tsx --test $(find src -name '*.test.ts' | sort | tr '\n' ' ')
 
   frontend:
     name: Frontend lint & build
