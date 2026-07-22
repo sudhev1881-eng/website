@@ -14,6 +14,16 @@ export {
   selectResumesToReplace,
 } from "./database-manager.js";
 export {
+  planAcceptedProfile,
+  buildPublicProfileFallbackFromResume,
+  mapExperienceRows,
+  mapProjectRows,
+  mapSkillRows,
+  mapCertificateRows,
+  mapPublicLinks,
+  isSectionAccepted,
+} from "./profile-builder.js";
+export {
   UserConfirmationService,
   userConfirmationService,
   applySectionAction,

@@ -7,8 +7,6 @@ import {
   Code2,
   Link2,
   Globe,
-  Mail,
-  Phone,
   MapPin,
   ExternalLink,
   Briefcase,
@@ -34,6 +32,8 @@ export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
   const coverStyle = profile.coverImage
     ? { backgroundImage: `url(${fileUrl(profile.coverImage)})`, backgroundSize: "cover", backgroundPosition: "center" }
     : undefined;
+
+  const hasPublicLinks = Boolean(profile.github || profile.linkedin || profile.portfolio);
 
   const handleResumeDownload = async () => {
     try {
@@ -68,10 +68,12 @@ export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
             <Avatar name={profile.name} size="xl" src={fileUrl(profile.avatar)} className="border-4 border-background shadow-card" />
             <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">{profile.name}</h1>
             <p className="mt-1 text-lg text-primary font-medium">{profile.title}</p>
-            <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5" />
-              {profile.university} · {profile.major}
-            </p>
+            {(profile.university || profile.major) ? (
+              <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5" />
+                {[profile.university, profile.major].filter(Boolean).join(" · ")}
+              </p>
+            ) : null}
           </div>
 
           {/* Primary CTA - Resume Download (prominent for recruiters) */}
@@ -86,24 +88,34 @@ export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
               Download Resume
             </Button>
             <div className="flex gap-2">
-              <Button variant="outline" size="lg" href={profile.github} aria-label="GitHub">
-                <Code2 className="h-5 w-5" />
-              </Button>
-              <Button variant="outline" size="lg" href={profile.linkedin} aria-label="LinkedIn">
-                <Link2 className="h-5 w-5" />
-              </Button>
-              <Button variant="outline" size="lg" href={profile.portfolio} aria-label="Portfolio">
-                <Globe className="h-5 w-5" />
-              </Button>
+              {profile.github ? (
+                <Button variant="outline" size="lg" href={profile.github} aria-label="GitHub">
+                  <Code2 className="h-5 w-5" />
+                </Button>
+              ) : null}
+              {profile.linkedin ? (
+                <Button variant="outline" size="lg" href={profile.linkedin} aria-label="LinkedIn">
+                  <Link2 className="h-5 w-5" />
+                </Button>
+              ) : null}
+              {profile.portfolio ? (
+                <Button variant="outline" size="lg" href={profile.portfolio} aria-label="Portfolio">
+                  <Globe className="h-5 w-5" />
+                </Button>
+              ) : null}
             </div>
           </div>
         </motion.div>
 
-        {/* About */}
-        <motion.section variants={fadeInVariants} className="mt-10">
-          <h2 className="text-lg font-bold">About</h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{profile.bio}</p>
-        </motion.section>
+        {/* About — enhanced summary when confirmed */}
+        {profile.bio?.trim() ? (
+          <motion.section variants={fadeInVariants} className="mt-10">
+            <h2 className="text-lg font-bold">About</h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+              {profile.bio}
+            </p>
+          </motion.section>
+        ) : null}
 
         {/* Experience */}
         {profile.experience.length > 0 ? (
@@ -123,7 +135,11 @@ export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
                       </div>
                       <Badge variant="outline">{exp.period}</Badge>
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{exp.description}</p>
+                    {exp.description ? (
+                      <p className="mt-2 text-sm text-muted-foreground whitespace-pre-line">
+                        {exp.description}
+                      </p>
+                    ) : null}
                   </CardContent>
                 </Card>
               ))}
@@ -152,7 +168,7 @@ export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
                         <Badge key={t} variant="outline">{t}</Badge>
                       ))}
                     </div>
-                    {project.url !== "#" ? (
+                    {project.url && project.url !== "#" ? (
                       <Button variant="ghost" size="sm" className="mt-3 px-0" href={project.url}>
                         View Project <ExternalLink className="h-3.5 w-3.5" />
                       </Button>
@@ -208,20 +224,32 @@ export function PublicProfileView({ profile, slug }: PublicProfileViewProps) {
           </motion.section>
         ) : null}
 
-        {/* Contact */}
-        <motion.section variants={fadeInVariants} className="mt-10">
-          <h2 className="mb-4 text-lg font-bold">Contact</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button variant="outline" className="justify-start" href={`mailto:${profile.email}`}>
-              <Mail className="h-4 w-4" />
-              {profile.email}
-            </Button>
-            <Button variant="outline" className="justify-start" href={`tel:${profile.phone}`}>
-              <Phone className="h-4 w-4" />
-              {profile.phone}
-            </Button>
-          </div>
-        </motion.section>
+        {/* Public professional links only — no private email/phone */}
+        {hasPublicLinks ? (
+          <motion.section variants={fadeInVariants} className="mt-10">
+            <h2 className="mb-4 text-lg font-bold">Links</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {profile.linkedin ? (
+                <Button variant="outline" className="justify-start" href={profile.linkedin}>
+                  <Link2 className="h-4 w-4" />
+                  LinkedIn
+                </Button>
+              ) : null}
+              {profile.github ? (
+                <Button variant="outline" className="justify-start" href={profile.github}>
+                  <Code2 className="h-4 w-4" />
+                  GitHub
+                </Button>
+              ) : null}
+              {profile.portfolio ? (
+                <Button variant="outline" className="justify-start" href={profile.portfolio}>
+                  <Globe className="h-4 w-4" />
+                  Portfolio
+                </Button>
+              ) : null}
+            </div>
+          </motion.section>
+        ) : null}
 
         <motion.footer variants={fadeInVariants} className="mt-12 border-t border-border pt-6 text-center">
           <Link href="/" className="text-xs text-muted-foreground hover:text-primary">

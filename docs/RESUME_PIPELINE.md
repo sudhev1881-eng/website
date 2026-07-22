@@ -80,5 +80,9 @@ Manual:
 
 1. Upload PDF/DOCX on student Resume page → watch stage badges.
 2. Review sections → fill incomplete cert issuer/date/credential if flagged.
-3. Confirm → only one active resume; skills/experience applied for accepted sections.
+3. Confirm → only one active resume; accepted enhanced sections write to public profile tables
+   (bio/summary, experience, projects, skills, certificates, university/major, LinkedIn/GitHub/portfolio).
+   Private email/phone are never applied from the resume onto the public profile.
 4. Upload another → previous stays active until confirm; reject leaves it intact.
+5. Public `/u/[slug]` and `GET /api/profiles/:slug` render those sections (with read-time fallback
+   from the active resume’s `enhanced_data` if profile tables were empty).

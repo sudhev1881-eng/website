@@ -211,8 +211,10 @@ export interface PublicProfile {
   github: string;
   linkedin: string;
   portfolio: string;
-  email: string;
-  phone: string;
+  /** @deprecated Private contact is no longer returned on public profiles */
+  email?: string;
+  /** @deprecated Private contact is no longer returned on public profiles */
+  phone?: string;
   resume: StudentDashboardData["resume"];
   projects: StudentDashboardData["projects"];
   skills: StudentDashboardData["skills"];

@@ -8,6 +8,7 @@ import type {
 } from "./types.js";
 import { defaultSectionDecisions } from "./types.js";
 import { toLegacyStructuredView } from "./schema-mapper.js";
+import { planAcceptedProfile } from "./profile-builder.js";
 
 /**
  * DatabaseManager / ProfileBuilder — draft persistence + profile apply.
@@ -200,47 +201,85 @@ export class DatabaseManager {
     });
   }
 
+  /**
+   * Write accepted enhanced resume sections into public profile tables.
+   * Uses paraphrased/enhanced text the user confirmed — not raw extract.
+   * Never writes email/phone onto the student row from resume contact.
+   */
   async applyAcceptedProfile(params: {
     studentId: string;
     data: IntelligentResumeData;
     decisions: SectionDecisions;
   }): Promise<void> {
     const { studentId, data, decisions } = params;
-    const accepted = (key: string) =>
-      decisions[key]?.accepted === true && decisions[key]?.deleted !== true;
+    const plan = planAcceptedProfile(data, decisions);
 
-    if (accepted("skills")) {
-      const skills =
-        data.skills.all.length > 0
-          ? data.skills.all
-          : [...data.skills.technical, ...data.skills.soft];
-      await this.upsertStudentSkills(studentId, skills);
+    if (plan.applySkills && plan.skills.length > 0) {
+      await this.upsertStudentSkills(
+        studentId,
+        plan.skills.map((s) => ({
+          name: s.name,
+          category: s.category,
+          confidence: s.level / 100,
+        })),
+      );
     }
 
-    if (accepted("experience") && data.experience.length > 0) {
-      await this.replaceExperience(studentId, data.experience, decisions.experience);
+    if (plan.applyExperience && plan.experience.length > 0) {
+      await this.replaceExperienceRows(studentId, plan.experience);
     }
 
-    if (accepted("certifications") && data.certifications.length > 0) {
-      await this.replaceCertificates(studentId, data.certifications, decisions.certifications);
+    if (plan.applyProjects && plan.projects.length > 0) {
+      await this.replaceProjectRows(studentId, plan.projects);
     }
 
-    if (accepted("contact") || accepted("portfolio") || accepted("github") || accepted("linkedin")) {
-      await this.fillEmptyContact(studentId, data);
+    if (plan.applyCertificates && plan.certificates.length > 0) {
+      await this.replaceCertificateRows(studentId, plan.certificates);
     }
 
-    if (accepted("summary") && data.summary?.trim()) {
-      await this.fillEmptyBio(studentId, data.summary);
+    if (plan.applyLinks) {
+      await this.fillEmptyPublicLinks(studentId, plan.links);
     }
 
-    if (accepted("personal") && data.personal.name?.trim()) {
-      // never overwrite existing name — only fill empty title-like field
+    if (plan.applyBio && plan.bio) {
+      // On confirm the user accepted the enhanced summary — write it for public About.
+      await this.writeBio(studentId, plan.bio);
+    }
+
+    if (plan.applyTitle && plan.title) {
       await query(
         `UPDATE students SET title = COALESCE(NULLIF(TRIM(title), ''), $2), updated_at = NOW()
          WHERE id = $1 AND (title IS NULL OR TRIM(title) = '')`,
-        [studentId, data.personal.title?.slice(0, 255) ?? null],
+        [studentId, plan.title],
       );
     }
+
+    if (plan.applyEducation && plan.education) {
+      const { university, major } = plan.education;
+      if (university || major) {
+        await query(
+          `UPDATE students SET
+             university = CASE
+               WHEN (university IS NULL OR TRIM(university) = '') AND $2::text IS NOT NULL THEN $2
+               ELSE university END,
+             major = CASE
+               WHEN (major IS NULL OR TRIM(major) = '') AND $3::text IS NOT NULL THEN $3
+               ELSE major END,
+             updated_at = NOW()
+           WHERE id = $1`,
+          [studentId, university, major],
+        );
+      }
+    }
+
+    logger.info("Applied accepted enhanced resume sections to public profile", {
+      studentId,
+      skills: plan.applySkills,
+      experience: plan.applyExperience,
+      projects: plan.applyProjects,
+      certificates: plan.applyCertificates,
+      bio: plan.applyBio,
+    });
   }
 
   async replaceEmbeddings(params: {
@@ -308,84 +347,76 @@ export class DatabaseManager {
     }
   }
 
-  private async replaceExperience(
+  private async replaceExperienceRows(
     studentId: string,
-    experience: IntelligentResumeData["experience"],
-    decision?: { acceptedIndexes?: number[] | "all" },
+    rows: Array<{ role: string; company: string; period: string; description: string }>,
   ): Promise<void> {
-    const indexes =
-      decision?.acceptedIndexes === "all" || decision?.acceptedIndexes == null
-        ? experience.map((_, i) => i)
-        : decision.acceptedIndexes;
-
-    const selected = indexes.map((i) => experience[i]).filter(Boolean);
-    if (selected.length === 0) return;
-
+    if (rows.length === 0) return;
     await query(`DELETE FROM experience WHERE student_id = $1`, [studentId]);
     let order = 0;
-    for (const exp of selected) {
-      const role = (exp.title || "Role").slice(0, 255);
-      const company = (exp.company || "Company").slice(0, 255);
-      const period = [exp.startDate, exp.endDate].filter(Boolean).join(" – ").slice(0, 100) || "N/A";
-      const description = (exp.bullets.join("\n") || exp.raw || "").slice(0, 5000);
+    for (const exp of rows) {
       await query(
         `INSERT INTO experience (student_id, role, company, period, description, sort_order)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [studentId, role, company, period, description, order++],
+        [studentId, exp.role, exp.company, exp.period, exp.description, order++],
       );
     }
   }
 
-  private async replaceCertificates(
+  private async replaceProjectRows(
     studentId: string,
-    certifications: IntelligentResumeData["certifications"],
-    decision?: { acceptedIndexes?: number[] | "all" },
+    rows: Array<{
+      title: string;
+      description: string;
+      tech: string[];
+      url: string;
+      featured: boolean;
+    }>,
   ): Promise<void> {
-    const indexes =
-      decision?.acceptedIndexes === "all" || decision?.acceptedIndexes == null
-        ? certifications.map((_, i) => i)
-        : decision.acceptedIndexes;
+    if (rows.length === 0) return;
+    await query(`DELETE FROM projects WHERE student_id = $1`, [studentId]);
+    let order = 0;
+    for (const p of rows) {
+      await query(
+        `INSERT INTO projects (student_id, title, description, tech, url, featured, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [studentId, p.title, p.description, p.tech, p.url, p.featured, order++],
+      );
+    }
+  }
 
-    const selected = indexes
-      .map((i) => certifications[i])
-      .filter((c) => c && c.name && c.issuer && c.issueDate);
-
-    if (selected.length === 0) return;
-
+  private async replaceCertificateRows(
+    studentId: string,
+    rows: Array<{ name: string; issuer: string; date: string; url: string }>,
+  ): Promise<void> {
+    if (rows.length === 0) return;
     await query(`DELETE FROM certificates WHERE student_id = $1`, [studentId]);
     let order = 0;
-    for (const c of selected) {
+    for (const c of rows) {
       await query(
         `INSERT INTO certificates (student_id, name, issuer, issued_date, url, sort_order)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          studentId,
-          c.name.slice(0, 255),
-          (c.issuer ?? "Unknown").slice(0, 255),
-          (c.issueDate ?? "").slice(0, 20),
-          (c.credentialUrl ?? "").slice(0, 500),
-          order++,
-        ],
+        [studentId, c.name, c.issuer, c.date, c.url, order++],
       );
     }
   }
 
-  private async fillEmptyContact(studentId: string, data: IntelligentResumeData): Promise<void> {
-    const phone = data.contact.phones[0]?.trim() || null;
-    const linkedin = data.linkedin?.trim() || data.contact.linkedin?.trim() || null;
-    const github = data.github?.trim() || data.contact.github?.trim() || null;
-    const website = data.portfolio?.trim() || data.contact.website?.trim() || null;
-    const location = data.contact.address?.trim() || null;
-
-    const row = await query<{
-      phone: string | null;
+  /** Fill empty professional links only — never email or phone. */
+  private async fillEmptyPublicLinks(
+    studentId: string,
+    links: {
       linkedin: string | null;
       github: string | null;
       portfolio: string | null;
       location: string | null;
-    }>(`SELECT phone, linkedin, github, portfolio, location FROM students WHERE id = $1`, [
-      studentId,
-    ]);
+    },
+  ): Promise<void> {
+    const row = await query<{
+      linkedin: string | null;
+      github: string | null;
+      portfolio: string | null;
+      location: string | null;
+    }>(`SELECT linkedin, github, portfolio, location FROM students WHERE id = $1`, [studentId]);
     const student = row.rows[0];
     if (!student) return;
 
@@ -394,40 +425,35 @@ export class DatabaseManager {
     let i = 1;
     const empty = (v: string | null | undefined) => !v || !String(v).trim();
 
-    if (phone && empty(student.phone)) {
-      sets.push(`phone = $${i++}`);
-      params.push(phone.slice(0, 50));
-    }
-    if (linkedin && empty(student.linkedin)) {
+    if (links.linkedin && empty(student.linkedin)) {
       sets.push(`linkedin = $${i++}`);
-      params.push(linkedin.slice(0, 500));
+      params.push(links.linkedin.slice(0, 500));
     }
-    if (github && empty(student.github)) {
+    if (links.github && empty(student.github)) {
       sets.push(`github = $${i++}`);
-      params.push(github.slice(0, 500));
+      params.push(links.github.slice(0, 500));
     }
-    if (website && empty(student.portfolio)) {
+    if (links.portfolio && empty(student.portfolio)) {
       sets.push(`portfolio = $${i++}`);
-      params.push(website.slice(0, 500));
+      params.push(links.portfolio.slice(0, 500));
     }
-    if (location && empty(student.location)) {
+    if (links.location && empty(student.location)) {
       sets.push(`location = $${i++}`);
-      params.push(location.slice(0, 255));
+      params.push(links.location.slice(0, 255));
     }
 
     if (sets.length === 0) return;
     sets.push(`updated_at = NOW()`);
     params.push(studentId);
     await query(`UPDATE students SET ${sets.join(", ")} WHERE id = $${i}`, params);
-    logger.info("Filled empty student contact fields from confirmed resume", { studentId });
+    logger.info("Filled empty public professional links from confirmed resume", { studentId });
   }
 
-  private async fillEmptyBio(studentId: string, summary: string): Promise<void> {
-    await query(
-      `UPDATE students SET bio = $2, updated_at = NOW()
-       WHERE id = $1 AND (bio IS NULL OR TRIM(bio) = '')`,
-      [studentId, summary.slice(0, 2000)],
-    );
+  private async writeBio(studentId: string, summary: string): Promise<void> {
+    await query(`UPDATE students SET bio = $2, updated_at = NOW() WHERE id = $1`, [
+      studentId,
+      summary.slice(0, 2000),
+    ]);
   }
 }
 

@@ -2,6 +2,8 @@ import { Router } from "express";
 import { query } from "../db/pool.js";
 import { logProfileEvent } from "../services/analytics.js";
 import { resolvePublicFileUrl } from "../services/storage.js";
+import { buildPublicProfileFallbackFromResume } from "../services/resume/profile-builder.js";
+import type { IntelligentResumeData, SectionDecisions } from "../services/resume/types.js";
 
 export const profilesRouter = Router();
 
@@ -21,6 +23,13 @@ function formatResume(row: {
     version: row.version,
     downloadUrl: resolvePublicFileUrl(row.file_path),
   };
+}
+
+function empty(v: unknown): boolean {
+  if (v == null) return true;
+  if (typeof v === "string") return !v.trim();
+  if (Array.isArray(v)) return v.length === 0;
+  return false;
 }
 
 /** GET /api/profiles — list all public usernames */
@@ -76,9 +85,9 @@ profilesRouter.get("/:slug", async (req, res) => {
   try {
     const { slug } = req.params;
 
+    // Intentionally omit users.email — private contact stays off the public profile.
     const studentResult = await query(
-      `SELECT s.*, u.email FROM students s
-       JOIN users u ON u.id = s.user_id
+      `SELECT s.* FROM students s
        WHERE s.username = $1 AND s.status = 'active'`,
       [slug],
     );
@@ -112,62 +121,138 @@ profilesRouter.get("/:slug", async (req, res) => {
       query(`SELECT * FROM certificates WHERE student_id = $1 ORDER BY sort_order`, [s.id]),
       query(`SELECT * FROM experience WHERE student_id = $1 ORDER BY sort_order`, [s.id]),
       query(
-        `SELECT * FROM resumes
-         WHERE student_id = $1 AND is_active = TRUE AND COALESCE(is_draft, FALSE) = FALSE
-         ORDER BY version DESC LIMIT 1`,
+        `SELECT r.*, e.enhanced_data, e.structured_data, e.section_decisions
+         FROM resumes r
+         LEFT JOIN extracted_resume_content e ON e.resume_id = r.id
+         WHERE r.student_id = $1 AND r.is_active = TRUE AND COALESCE(r.is_draft, FALSE) = FALSE
+         ORDER BY r.version DESC LIMIT 1`,
         [s.id],
       ),
     ]);
 
+    let bio = s.bio as string;
+    let university = s.university as string;
+    let major = s.major as string;
+    let title = s.title as string;
+    let github = (s.github as string) || "";
+    let linkedin = (s.linkedin as string) || "";
+    let portfolio = (s.portfolio as string) || "";
+
+    let projectRows = projects.rows.map((p) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      tech: p.tech,
+      url: p.url,
+      image: p.image_url,
+      featured: p.featured,
+    }));
+
+    let skillRows = skills.rows.map((sk) => ({
+      name: sk.name,
+      level: sk.level,
+      category: sk.category,
+    }));
+
+    let certificateRows = certificates.rows.map((c) => ({
+      id: c.id,
+      name: c.name,
+      issuer: c.issuer,
+      date: c.issued_date,
+      url: c.url,
+    }));
+
+    let experienceRows = experience.rows.map((e) => ({
+      id: e.id,
+      role: e.role,
+      company: e.company,
+      period: e.period,
+      description: e.description,
+    }));
+
+    // Fallback: confirmed resume with enhanced/accepted data but empty profile tables
+    const resumeRow = resume.rows[0] as
+      | {
+          file_name: string;
+          file_size_bytes: number;
+          file_path: string | null;
+          version: number;
+          uploaded_at: Date;
+          enhanced_data: IntelligentResumeData | null;
+          structured_data: IntelligentResumeData | null;
+          section_decisions: SectionDecisions | null;
+          processing_status?: string;
+        }
+      | undefined;
+
+    const needsFallback =
+      resumeRow &&
+      (empty(bio) ||
+        experienceRows.length === 0 ||
+        projectRows.length === 0 ||
+        skillRows.length === 0 ||
+        certificateRows.length === 0 ||
+        empty(university) ||
+        empty(major) ||
+        empty(github) ||
+        empty(linkedin) ||
+        empty(portfolio));
+
+    const enhanced =
+      resumeRow?.enhanced_data ??
+      (resumeRow?.structured_data as IntelligentResumeData | null) ??
+      null;
+
+    if (needsFallback && enhanced) {
+      const fb = buildPublicProfileFallbackFromResume({
+        enhanced,
+        decisions: resumeRow.section_decisions ?? {},
+        defaultAcceptMissing: true,
+      });
+
+      if (empty(bio) && fb.bio) bio = fb.bio;
+      if (empty(university) && fb.university) university = fb.university;
+      if (empty(major) && fb.major) major = fb.major;
+      if ((empty(title) || title === "Student") && fb.title) title = fb.title;
+      if (empty(github) && fb.github) github = fb.github;
+      if (empty(linkedin) && fb.linkedin) linkedin = fb.linkedin;
+      if (empty(portfolio) && fb.portfolio) portfolio = fb.portfolio;
+
+      if (experienceRows.length === 0 && fb.experience.length > 0) {
+        experienceRows = fb.experience;
+      }
+      if (projectRows.length === 0 && fb.projects.length > 0) {
+        projectRows = fb.projects.map((p) => ({
+          ...p,
+          image: null as string | null,
+        }));
+      }
+      if (skillRows.length === 0 && fb.skills.length > 0) {
+        skillRows = fb.skills;
+      }
+      if (certificateRows.length === 0 && fb.certificates.length > 0) {
+        certificateRows = fb.certificates;
+      }
+    }
+
     res.json({
       username: s.username,
       name: s.name,
-      title: s.title,
-      university: s.university,
-      major: s.major,
-      bio: s.bio,
+      title,
+      university,
+      major,
+      bio,
       avatar: s.avatar_url,
       coverImage: s.cover_image_url,
-      github: s.github,
-      linkedin: s.linkedin,
-      portfolio: s.portfolio,
-      email: s.email,
-      phone: s.phone,
-      resume: formatResume(resume.rows[0] as {
-        file_name: string;
-        file_size_bytes: number;
-        file_path: string | null;
-        version: number;
-        uploaded_at: Date;
-      } | undefined),
-      projects: projects.rows.map((p) => ({
-        id: p.id,
-        title: p.title,
-        description: p.description,
-        tech: p.tech,
-        url: p.url,
-        image: p.image_url,
-        featured: p.featured,
-      })),
-      skills: skills.rows.map((sk) => ({
-        name: sk.name,
-        level: sk.level,
-        category: sk.category,
-      })),
-      certificates: certificates.rows.map((c) => ({
-        id: c.id,
-        name: c.name,
-        issuer: c.issuer,
-        date: c.issued_date,
-        url: c.url,
-      })),
-      experience: experience.rows.map((e) => ({
-        id: e.id,
-        role: e.role,
-        company: e.company,
-        period: e.period,
-        description: e.description,
-      })),
+      github,
+      linkedin,
+      portfolio,
+      // Private contact intentionally omitted from public profiles
+      resume: formatResume(resumeRow),
+      projects: projectRows,
+      skills: skillRows,
+      certificates: certificateRows,
+      experience: experienceRows,
     });
   } catch (err) {
     console.error("GET /profiles/:slug error:", err);

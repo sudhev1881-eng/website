@@ -4,6 +4,11 @@ import { ValidationEngine } from "./validation-engine.js";
 import { mergeEnhancementNoInvent } from "./ai-enhancement.engine.js";
 import { applySectionAction } from "./user-confirmation.service.js";
 import { selectResumesToReplace } from "./database-manager.js";
+import {
+  planAcceptedProfile,
+  buildPublicProfileFallbackFromResume,
+  mapPublicLinks,
+} from "./profile-builder.js";
 import { EmbeddingGenerator } from "./embedding-generator.js";
 import { emptyIntelligentResumeData, type IntelligentResumeData } from "./types.js";
 
@@ -182,6 +187,131 @@ describe("selectResumesToReplace (single-resume)", () => {
   it("returns empty when confirming the only resume draft", () => {
     const ids = selectResumesToReplace([{ id: "draft-1", is_draft: true, is_active: false }], "draft-1");
     assert.deepEqual(ids, []);
+  });
+});
+
+describe("planAcceptedProfile / ProfileBuilder", () => {
+  it("maps enhanced paraphrased experience/skills/projects for accepted sections", () => {
+    const data = sampleData({
+      summary: "Polished engineer summary with measurable impact.",
+      experience: [
+        {
+          title: "Engineer",
+          company: "Acme",
+          location: null,
+          startDate: "2020",
+          endDate: "Present",
+          bullets: ["Designed scalable APIs", "Cut latency 40%"],
+          raw: "Engineer at Acme",
+        },
+      ],
+      projects: [
+        {
+          name: "StudentLink",
+          description: "NFC student profiles",
+          technologies: ["TypeScript", "Next.js"],
+          url: "https://example.com",
+        },
+      ],
+      github: "https://github.com/ada",
+      linkedin: "https://linkedin.com/in/ada",
+      contact: {
+        ...emptyIntelligentResumeData().contact,
+        emails: ["private@example.com"],
+        phones: ["555-0100"],
+        github: "https://github.com/ada",
+        linkedin: "https://linkedin.com/in/ada",
+        name: "Ada",
+      },
+    });
+
+    const decisions = {
+      summary: { accepted: true },
+      experience: { accepted: true, acceptedIndexes: "all" as const },
+      projects: { accepted: true, acceptedIndexes: "all" as const },
+      skills: { accepted: true },
+      education: { accepted: true },
+      contact: { accepted: true },
+      certifications: { accepted: false },
+    };
+
+    const plan = planAcceptedProfile(data, decisions);
+    assert.equal(plan.applyBio, true);
+    assert.equal(plan.bio, "Polished engineer summary with measurable impact.");
+    assert.equal(plan.experience.length, 1);
+    assert.match(plan.experience[0].description, /Designed scalable APIs/);
+    assert.match(plan.experience[0].description, /Cut latency 40%/);
+    assert.equal(plan.projects.length, 1);
+    assert.equal(plan.projects[0].title, "StudentLink");
+    assert.deepEqual(plan.projects[0].tech, ["TypeScript", "Next.js"]);
+    assert.equal(plan.skills[0].name, "TypeScript");
+    assert.equal(plan.education?.university, "MIT");
+    assert.equal(plan.applyCertificates, false);
+    assert.equal(plan.certificates.length, 0);
+  });
+
+  it("does not include email or phone in public links", () => {
+    const data = sampleData({
+      contact: {
+        emails: ["secret@example.com"],
+        phones: ["555-9999"],
+        linkedin: "https://linkedin.com/in/x",
+        github: "https://github.com/x",
+        website: "https://x.dev",
+        address: "Boston",
+        name: "X",
+      },
+      linkedin: null,
+      github: null,
+      portfolio: null,
+    });
+    const links = mapPublicLinks(data);
+    assert.equal(links.linkedin, "https://linkedin.com/in/x");
+    assert.equal(links.github, "https://github.com/x");
+    assert.equal(links.portfolio, "https://x.dev");
+    assert.equal(links.location, "Boston");
+    assert.ok(!("email" in links));
+    assert.ok(!("phone" in links));
+  });
+
+  it("skips rejected sections when building the apply plan", () => {
+    const data = sampleData();
+    const plan = planAcceptedProfile(data, {
+      experience: { accepted: false },
+      skills: { accepted: true },
+      summary: { accepted: false },
+    });
+    assert.equal(plan.applyExperience, false);
+    assert.equal(plan.experience.length, 0);
+    assert.equal(plan.applySkills, true);
+    assert.equal(plan.applyBio, false);
+  });
+
+  it("builds public-profile fallback from enhanced data for legacy confirmed resumes", () => {
+    const enhanced = sampleData({
+      summary: "Enhanced bio for public About",
+      experience: [
+        {
+          title: "SWE",
+          company: "Corp",
+          location: null,
+          startDate: "2021",
+          endDate: "2023",
+          bullets: ["Shipped features"],
+          raw: "",
+        },
+      ],
+    });
+    const fb = buildPublicProfileFallbackFromResume({
+      enhanced,
+      decisions: {},
+      defaultAcceptMissing: true,
+    });
+    assert.equal(fb.bio, "Enhanced bio for public About");
+    assert.equal(fb.experience.length, 1);
+    assert.equal(fb.experience[0].role, "SWE");
+    assert.equal(fb.university, "MIT");
+    assert.ok(fb.skills.length >= 1);
   });
 });
 
