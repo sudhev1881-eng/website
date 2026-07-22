@@ -17,6 +17,8 @@ import {
   toLegacyStructuredView,
   type IntelligentResumeData,
 } from "../services/resume/index.js";
+import { getResumeAiStatus } from "../services/ai/index.js";
+import { getEnv } from "../config/env.js";
 
 function extractStoragePath(urlOrPath: string): string {
   if (!urlOrPath.includes("://")) return urlOrPath.replace(/^\/api\/uploads\//, "");
@@ -139,6 +141,7 @@ uploadsRouter.post(
         processingStage: draft.extractable ? draft.processingStage : "awaiting_confirmation",
         isDraft: true,
         errorMessage: draft.errorMessage ?? null,
+        requireConfirmation: getEnv().RESUME_REQUIRE_CONFIRMATION,
       });
     } catch (err) {
       console.error("POST /students/me/resume error:", err);
@@ -146,6 +149,20 @@ uploadsRouter.post(
     }
   },
 );
+
+/** GET /api/students/me/resumes/ai-status — Ollama reachability + provider config */
+uploadsRouter.get("/me/resumes/ai-status", requireAuth, requireStudent, async (_req, res) => {
+  try {
+    const status = await getResumeAiStatus();
+    res.json({
+      ...status,
+      requireConfirmation: getEnv().RESUME_REQUIRE_CONFIRMATION,
+    });
+  } catch (err) {
+    console.error("GET /students/me/resumes/ai-status error:", err);
+    res.status(500).json({ error: "Failed to fetch resume AI status" });
+  }
+});
 
 /** GET /api/students/me/resumes — active + optional draft */
 uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRequest, res) => {

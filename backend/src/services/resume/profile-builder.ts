@@ -4,6 +4,123 @@
  */
 import type { IntelligentResumeData, SectionDecisions } from "./types.js";
 
+function clampPct(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const scaled = n > 0 && n <= 1 ? n * 100 : n;
+  return Math.max(0, Math.min(100, Math.round(scaled)));
+}
+
+/** Public-facing AI enrichment derived from confirmed resume enhanced_data. */
+export interface PublicAiPayload {
+  summary: string | null;
+  title: string | null;
+  generated: boolean;
+  insights: Array<{ id: string; title: string; detail: string; confidence: number }>;
+  skillInsights: Array<{
+    category: string;
+    strength: string;
+    detail: string;
+    confidence: number;
+  }>;
+  score: number | null;
+  scores: {
+    overall: number | null;
+    technical: number | null;
+    experience: number | null;
+    projects: number | null;
+  };
+}
+
+export function buildPublicAiFromResume(
+  data: IntelligentResumeData | null | undefined,
+): { aiGenerated: boolean; ai: PublicAiPayload | null } {
+  if (!data) return { aiGenerated: false, ai: null };
+
+  const generated =
+    data.aiProvider === "ollama" ||
+    data.parser === "ollama" ||
+    data.parser === "enhanced" ||
+    data.parser === "heuristic+llm";
+
+  const overall = clampPct(data.confidence?.overall ?? 0);
+  const technical = clampPct(data.confidence?.skills ?? overall);
+  const experience = clampPct(data.confidence?.experience ?? overall);
+  const education = clampPct(data.confidence?.education ?? overall);
+  const projectsScore = clampPct(
+    (technical * 0.4 + experience * 0.3 + education * 0.3) || overall,
+  );
+
+  const insights: PublicAiPayload["insights"] = [];
+  for (const [i, domain] of (data.domains ?? []).slice(0, 4).entries()) {
+    const label = domain.trim();
+    if (!label) continue;
+    insights.push({
+      id: `domain-${i}`,
+      title: `${label} focus`,
+      detail: `Resume content aligns with ${label}.`,
+      confidence: overall || 70,
+    });
+  }
+  for (const [i, c] of (data.classifications ?? []).slice(0, 2).entries()) {
+    const label = c.trim();
+    if (!label) continue;
+    insights.push({
+      id: `class-${i}`,
+      title: label,
+      detail: `Classified as ${label} from resume signals.`,
+      confidence: Math.max(60, overall - 5),
+    });
+  }
+
+  const byCategory = new Map<string, Array<{ name: string; frequency: number }>>();
+  for (const skill of data.skills?.all ?? []) {
+    const cat = (skill.category || "Other").trim() || "Other";
+    const list = byCategory.get(cat) ?? [];
+    list.push({ name: skill.name, frequency: skill.frequency ?? 1 });
+    byCategory.set(cat, list);
+  }
+  const skillInsights = [...byCategory.entries()]
+    .map(([category, skills]) => {
+      const sorted = [...skills].sort((a, b) => b.frequency - a.frequency);
+      const top = sorted.slice(0, 3).map((s) => s.name).join(", ");
+      const strength =
+        sorted.length >= 5 ? "Broad coverage" : sorted.length >= 3 ? "Strong proficiency" : "Solid foundation";
+      return {
+        category,
+        strength,
+        detail: top
+          ? `Most active in ${category.toLowerCase()} — ${top}.`
+          : `Consistent signal in ${category}.`,
+        confidence: clampPct(60 + sorted.length * 5 + technical * 0.15),
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 4);
+
+  const summary = data.summary?.trim() || data.objective?.trim() || null;
+  const title = data.personal?.title?.trim() || null;
+
+  // Always return a payload when we have enhanced resume data so the UI can
+  // label AI vs heuristic and surface domains / confidence.
+  return {
+    aiGenerated: generated,
+    ai: {
+      summary,
+      title,
+      generated,
+      insights: insights.slice(0, 4),
+      skillInsights,
+      score: overall || null,
+      scores: {
+        overall: overall || null,
+        technical: technical || null,
+        experience: experience || null,
+        projects: projectsScore || null,
+      },
+    },
+  };
+}
+
 export function isSectionAccepted(decisions: SectionDecisions, key: string): boolean {
   const d = decisions[key];
   return d?.accepted === true && d?.deleted !== true;
@@ -248,6 +365,17 @@ export interface PublicProfileSectionFallback {
   github: string | null;
   linkedin: string | null;
   portfolio: string | null;
+  location: string | null;
+  gpa: string | null;
+  education: Array<{
+    id: string;
+    school: string;
+    degree: string | null;
+    field: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    gpa: string | null;
+  }>;
 }
 
 /**
@@ -285,6 +413,26 @@ export function buildPublicProfileFallbackFromResume(params: {
   }
 
   const plan = planAcceptedProfile(enhanced, decisions);
+  const educationList = Array.isArray(enhanced.education) ? enhanced.education : [];
+  const education =
+    plan.applyEducation
+      ? educationList
+          .filter((e) => e.school?.trim() || e.degree?.trim() || e.field?.trim())
+          .map((e, i) => ({
+            id: `resume-edu-${i}`,
+            school: (e.school || "School").slice(0, 255),
+            degree: e.degree?.slice(0, 255) ?? null,
+            field: e.field?.slice(0, 255) ?? null,
+            startDate: e.startDate ?? null,
+            endDate: e.endDate ?? null,
+            gpa: e.gpa ?? null,
+          }))
+      : [];
+  const gpa =
+    education.map((e) => e.gpa).find((v) => Boolean(v?.trim())) ??
+    educationList.map((e) => e.gpa).find((v) => Boolean(v?.trim())) ??
+    null;
+
   return {
     bio: plan.bio,
     experience: plan.experience.map((e, i) => ({ ...e, id: `resume-exp-${i}` })),
@@ -297,5 +445,41 @@ export function buildPublicProfileFallbackFromResume(params: {
     github: plan.links.github,
     linkedin: plan.links.linkedin,
     portfolio: plan.links.portfolio,
+    location: plan.links.location,
+    gpa,
+    education,
+  };
+}
+
+/** Secondary public fields from enhanced resume (never email/phone). */
+export function buildSecondaryPublicFields(data: IntelligentResumeData | null | undefined): {
+  languages: Array<{ name: string; proficiency: string | null }>;
+  interests: string[];
+  volunteer: Array<{
+    role: string | null;
+    organization: string | null;
+    period: string | null;
+    description: string | null;
+  }>;
+} {
+  if (!data) return { languages: [], interests: [], volunteer: [] };
+  return {
+    languages: (data.languages ?? [])
+      .filter((l) => l.name?.trim())
+      .map((l) => ({ name: l.name.trim(), proficiency: l.proficiency ?? null }))
+      .slice(0, 12),
+    interests: (data.interests ?? [])
+      .map((i) => i.trim())
+      .filter(Boolean)
+      .slice(0, 20),
+    volunteer: (data.volunteer ?? [])
+      .filter((v) => v.role?.trim() || v.organization?.trim())
+      .slice(0, 10)
+      .map((v) => ({
+        role: v.role,
+        organization: v.organization,
+        period: v.period,
+        description: v.description,
+      })),
   };
 }

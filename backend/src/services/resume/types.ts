@@ -105,9 +105,14 @@ export interface IntelligentResumeData {
   interests: string[];
   references: Array<{ name: string; contact: string | null; relationship: string | null }>;
   links: Array<{ label: string; url: string }>;
+  /** Alias of links for AI extract prompts / social profiles */
+  socialLinks: Array<{ label: string; url: string }>;
   portfolio: string | null;
   github: string | null;
   linkedin: string | null;
+  /** Inferred career/technical domains (AI | ML | Cybersecurity | …) */
+  domains: string[];
+  classifications: string[];
   customSections: CustomSection[];
   sections: Record<string, string>;
   confidence: {
@@ -117,8 +122,10 @@ export interface IntelligentResumeData {
     education: number;
     skills: number;
   };
-  parser: "heuristic" | "heuristic+llm" | "enhanced";
+  parser: "heuristic" | "heuristic+llm" | "enhanced" | "ollama";
   rawSkillsFound?: string[];
+  /** Which AI provider produced the enhanced payload */
+  aiProvider?: "ollama" | "heuristic";
 }
 
 export interface ValidationFlag {
@@ -142,6 +149,17 @@ export type SectionDecisions = Record<string, SectionDecision>;
 export interface EmbeddingChunk {
   sectionKey: string;
   text: string;
+  embedding: number[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ResumeVectorRow {
+  studentId: string;
+  resumeId: string;
+  section: string;
+  chunkIndex: number;
+  content: string;
+  metadata: Record<string, unknown>;
   embedding: number[];
 }
 
@@ -168,9 +186,12 @@ export const DEFAULT_SECTION_KEYS = [
   "interests",
   "references",
   "links",
+  "socialLinks",
   "portfolio",
   "github",
   "linkedin",
+  "domains",
+  "classifications",
   "customSections",
 ] as const;
 
@@ -206,9 +227,12 @@ export function emptyIntelligentResumeData(): IntelligentResumeData {
     interests: [],
     references: [],
     links: [],
+    socialLinks: [],
     portfolio: null,
     github: null,
     linkedin: null,
+    domains: [],
+    classifications: [],
     customSections: [],
     sections: {},
     confidence: {
@@ -219,6 +243,7 @@ export function emptyIntelligentResumeData(): IntelligentResumeData {
       skills: 0,
     },
     parser: "heuristic",
+    aiProvider: "heuristic",
   };
 }
 

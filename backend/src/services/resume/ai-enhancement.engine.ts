@@ -1,20 +1,34 @@
-import { getEnv } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import {
+  buildClassifyMessages,
+  buildResumeEnhanceMessages,
+  buildResumeExtractMessages,
+  buildSkillInferMessages,
+  resolveResumeAiBundle,
+  sanitizeResumeText,
+  type LLMProvider,
+  type ResumeAiProviderName,
+} from "../ai/index.js";
 import { SectionOptimizer } from "./section-optimizer.js";
-import type { IntelligentResumeData } from "./types.js";
+import {
+  emptyIntelligentResumeData,
+  type IntelligentResumeData,
+} from "./types.js";
+import { coerceToIntelligentResumeData } from "./schema-mapper.js";
 
 export interface EnhancementResult {
   data: IntelligentResumeData;
   enhanced: boolean;
-  skippedReason?: "no_key" | "empty" | "llm_failed";
+  provider: ResumeAiProviderName;
+  skippedReason?: "unavailable" | "empty" | "llm_failed" | "heuristic_only";
 }
 
 const MAX_CHARS = 14_000;
 
 /**
- * AiEnhancementEngine — optional OpenAI polish.
+ * AiEnhancementEngine — Ollama (via AI factory) polish + extract enrichment.
  * NEVER invents employers, dates, credentials, or skills not in source.
- * Without OPENAI_API_KEY: pass-through heuristic data (parser stays heuristic).
+ * Falls back to heuristic data when Ollama is down or RESUME_AI_PROVIDER=heuristic.
  */
 export class AiEnhancementEngine {
   constructor(private readonly optimizer = new SectionOptimizer()) {}
@@ -24,105 +38,337 @@ export class AiEnhancementEngine {
     rawText: string,
   ): Promise<EnhancementResult> {
     const optimized = this.optimizer.optimizeForAts(rawExtracted);
-    const apiKey = process.env.OPENAI_API_KEY?.trim();
+    const cleaned = sanitizeResumeText(rawText, MAX_CHARS);
 
-    if (!apiKey) {
+    if (!cleaned.trim()) {
       return {
-        data: { ...optimized, parser: "heuristic" },
+        data: { ...optimized, parser: "heuristic", aiProvider: "heuristic" },
         enhanced: false,
-        skippedReason: "no_key",
+        provider: "heuristic",
+        skippedReason: "empty",
       };
     }
 
-    if (!rawText.trim()) {
-      return { data: optimized, enhanced: false, skippedReason: "empty" };
+    const { bundle, fellBackToHeuristic } = await resolveResumeAiBundle();
+    if (bundle.provider === "heuristic" || fellBackToHeuristic) {
+      return {
+        data: { ...optimized, parser: "heuristic", aiProvider: "heuristic" },
+        enhanced: false,
+        provider: "heuristic",
+        skippedReason: fellBackToHeuristic ? "unavailable" : "heuristic_only",
+      };
     }
 
     try {
-      const polished = await this.polishWithLlm(optimized, rawText, apiKey);
-      if (!polished) {
-        return { data: optimized, enhanced: false, skippedReason: "llm_failed" };
-      }
+      const enriched = await this.runOllamaIntelligence(bundle.llm, optimized, cleaned);
       return {
-        data: mergeEnhancementNoInvent(optimized, polished),
+        data: enriched,
         enhanced: true,
+        provider: "ollama",
       };
     } catch (err) {
-      logger.warn("AI resume enhancement failed; using heuristic data", {
+      logger.warn("Ollama resume enhancement failed; using heuristic data", {
         message: err instanceof Error ? err.message : String(err),
       });
-      return { data: optimized, enhanced: false, skippedReason: "llm_failed" };
+      return {
+        data: { ...optimized, parser: "heuristic", aiProvider: "heuristic" },
+        enhanced: false,
+        provider: "heuristic",
+        skippedReason: "llm_failed",
+      };
     }
   }
 
-  private async polishWithLlm(
+  private async runOllamaIntelligence(
+    llm: LLMProvider,
     source: IntelligentResumeData,
-    rawText: string,
-    apiKey: string,
-  ): Promise<Partial<IntelligentResumeData> | null> {
-    const model = getEnv().OPENAI_MODEL;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30_000);
-
+    cleanedText: string,
+  ): Promise<IntelligentResumeData> {
+    // 1) Structured extract (merge onto heuristic — never wipe with hollow LLM)
+    let merged = source;
     try {
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: `You polish resume language for grammar, ATS readability, and clarity.
-Return ONLY JSON with optional keys: summary, objective, experience (array of {bullets: string[]}), projects (array of {description: string|null}), achievements (string[]).
-HARD RULES:
-- NEVER invent employers, job titles, dates, schools, credentials, skills, certifications, or URLs.
-- Only rephrase text already present in the source JSON / resume text.
-- Keep the same number of experience entries and bullet counts (or fewer if removing empty bullets).
-- Do not add new sections or facts.`,
-            },
-            {
-              role: "user",
-              content: `Source structured data:\n${JSON.stringify({
-                summary: source.summary,
-                objective: source.objective,
-                experience: source.experience.map((e) => ({
-                  title: e.title,
-                  company: e.company,
-                  bullets: e.bullets,
-                })),
-                projects: source.projects.map((p) => ({
-                  name: p.name,
-                  description: p.description,
-                })),
-                achievements: source.achievements,
-              })}\n\nResume text (context only):\n${rawText.slice(0, MAX_CHARS)}`,
-            },
-          ],
-        }),
+      const extract = await llm.chat(buildResumeExtractMessages(cleanedText), {
+        json: true,
+        temperature: 0,
+        timeoutMs: 90_000,
       });
+      const parsed = safeParseJson(extract.content);
+      if (parsed) {
+        merged = mergeExtractOntoHeuristic(source, parsed);
+      }
+    } catch (err) {
+      logger.warn("Ollama extract step failed; continuing with heuristic base", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
 
-      if (!res.ok) {
-        logger.warn("OpenAI enhancement HTTP error", { status: res.status });
+    // 2) Skill inference from projects/experience
+    try {
+      const skillRes = await llm.chat(
+        buildSkillInferMessages(
+          {
+            projects: merged.projects.slice(0, 12),
+            experience: merged.experience.slice(0, 10).map((e) => ({
+              title: e.title,
+              company: e.company,
+              bullets: e.bullets,
+            })),
+          },
+          cleanedText,
+        ),
+        { json: true, temperature: 0, timeoutMs: 60_000 },
+      );
+      const skillJson = safeParseJson(skillRes.content) as {
+        technical?: Array<{ name?: string; category?: string; confidence?: number }>;
+        soft?: Array<{ name?: string; category?: string; confidence?: number }>;
+      } | null;
+      if (skillJson) {
+        merged = mergeInferredSkills(merged, skillJson);
+      }
+    } catch (err) {
+      logger.warn("Ollama skill-infer step failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 3) Domain classification
+    try {
+      const classRes = await llm.chat(
+        buildClassifyMessages(
+          {
+            summary: merged.summary,
+            skills: merged.skills.all.slice(0, 30).map((s) => s.name),
+            projects: merged.projects.slice(0, 8).map((p) => p.name),
+            experience: merged.experience.slice(0, 6).map((e) => e.title),
+          },
+          cleanedText,
+        ),
+        { json: true, temperature: 0, timeoutMs: 45_000 },
+      );
+      const classJson = safeParseJson(classRes.content) as {
+        domains?: string[];
+        classifications?: string[];
+      } | null;
+      if (classJson) {
+        merged = {
+          ...merged,
+          domains: uniqueStrings(classJson.domains ?? merged.domains).slice(0, 8),
+          classifications: uniqueStrings(classJson.classifications ?? merged.classifications).slice(
+            0,
+            8,
+          ),
+        };
+      }
+    } catch (err) {
+      logger.warn("Ollama classify step failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 4) Wording polish (no invent)
+    try {
+      const polishRes = await llm.chat(
+        buildResumeEnhanceMessages(
+          {
+            summary: merged.summary,
+            objective: merged.objective,
+            experience: merged.experience.map((e) => ({
+              title: e.title,
+              company: e.company,
+              bullets: e.bullets,
+            })),
+            projects: merged.projects.map((p) => ({
+              name: p.name,
+              description: p.description,
+            })),
+            achievements: merged.achievements,
+          },
+          cleanedText,
+        ),
+        { json: true, temperature: 0.2, timeoutMs: 60_000 },
+      );
+      const polished = safeParseJson(polishRes.content) as Partial<IntelligentResumeData> | null;
+      if (polished) {
+        merged = mergeEnhancementNoInvent(merged, polished);
+      }
+    } catch (err) {
+      logger.warn("Ollama enhance step failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    return {
+      ...merged,
+      parser: "ollama",
+      aiProvider: "ollama",
+    };
+  }
+}
+
+function safeParseJson(raw: string): unknown | null {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(raw.slice(start, end + 1));
+      } catch {
         return null;
       }
-
-      const body = (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = body.choices?.[0]?.message?.content;
-      if (!content) return null;
-      return JSON.parse(content) as Partial<IntelligentResumeData>;
-    } finally {
-      clearTimeout(timer);
     }
+    return null;
   }
+}
+
+function uniqueStrings(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of arr) {
+    if (typeof v !== "string") continue;
+    const t = v.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Merge Ollama extract onto heuristic without wiping richer heuristic sections. */
+export function mergeExtractOntoHeuristic(
+  heuristic: IntelligentResumeData,
+  llmRaw: unknown,
+): IntelligentResumeData {
+  const coerced = coerceToIntelligentResumeData(llmRaw) ?? emptyIntelligentResumeData();
+  const social =
+    Array.isArray((llmRaw as { socialLinks?: unknown }).socialLinks)
+      ? ((llmRaw as { socialLinks: Array<{ label?: string; url?: string }> }).socialLinks
+          .filter((l) => l?.url)
+          .map((l) => ({ label: String(l.label ?? "Link"), url: String(l.url) })) as IntelligentResumeData["socialLinks"])
+      : [];
+
+  const preferArr = <T>(a: T[], b: T[]): T[] => (a.length > 0 ? a : b);
+  const preferStr = (a: string | null | undefined, b: string | null | undefined) =>
+    a && a.trim() ? a : b ?? null;
+
+  const links = preferArr(
+    social.length ? social : coerced.links,
+    heuristic.links.length ? heuristic.links : heuristic.socialLinks,
+  );
+
+  const skillsTechnical = preferArr(coerced.skills.technical, heuristic.skills.technical);
+  const skillsSoft = preferArr(coerced.skills.soft, heuristic.skills.soft);
+  const skillsAll =
+    coerced.skills.all.length > 0
+      ? coerced.skills.all
+      : [...skillsTechnical, ...skillsSoft].length
+        ? [...skillsTechnical, ...skillsSoft]
+        : heuristic.skills.all;
+
+  return {
+    ...heuristic,
+    personal: {
+      name: preferStr(coerced.personal.name, heuristic.personal.name),
+      title: preferStr(coerced.personal.title, heuristic.personal.title),
+    },
+    contact: {
+      ...heuristic.contact,
+      emails: preferArr(coerced.contact.emails, heuristic.contact.emails),
+      phones: preferArr(coerced.contact.phones, heuristic.contact.phones),
+      linkedin: preferStr(coerced.contact.linkedin, heuristic.contact.linkedin),
+      github: preferStr(coerced.contact.github, heuristic.contact.github),
+      website: preferStr(coerced.contact.website, heuristic.contact.website),
+      address: preferStr(coerced.contact.address, heuristic.contact.address),
+      name: preferStr(coerced.contact.name, heuristic.contact.name),
+    },
+    summary: preferStr(coerced.summary, heuristic.summary),
+    objective: preferStr(coerced.objective, heuristic.objective),
+    education: preferArr(coerced.education, heuristic.education),
+    experience: preferRicherExperience(coerced.experience, heuristic.experience),
+    projects: preferArr(coerced.projects, heuristic.projects),
+    skills: { technical: skillsTechnical, soft: skillsSoft, all: skillsAll },
+    languages: preferArr(coerced.languages, heuristic.languages),
+    certifications: preferArr(coerced.certifications, heuristic.certifications),
+    awards: preferArr(coerced.awards, heuristic.awards),
+    achievements: preferArr(coerced.achievements, heuristic.achievements),
+    volunteer: preferArr(coerced.volunteer, heuristic.volunteer),
+    leadership: preferArr(coerced.leadership, heuristic.leadership),
+    publications: preferArr(coerced.publications, heuristic.publications),
+    interests: preferArr(coerced.interests, heuristic.interests),
+    links,
+    socialLinks: links,
+    domains: preferArr(coerced.domains, heuristic.domains),
+    classifications: preferArr(coerced.classifications, heuristic.classifications),
+    portfolio: preferStr(coerced.portfolio, heuristic.portfolio) ?? preferStr(coerced.contact.website, heuristic.portfolio),
+    github: preferStr(coerced.github, heuristic.github) ?? preferStr(coerced.contact.github, heuristic.github),
+    linkedin: preferStr(coerced.linkedin, heuristic.linkedin) ?? preferStr(coerced.contact.linkedin, heuristic.linkedin),
+  };
+}
+
+function preferRicherExperience(
+  llm: IntelligentResumeData["experience"],
+  heuristic: IntelligentResumeData["experience"],
+): IntelligentResumeData["experience"] {
+  if (!Array.isArray(llm) || llm.length === 0) return heuristic;
+  const substantive = (jobs: IntelligentResumeData["experience"]) =>
+    jobs.filter((e) => e.title || e.company || e.startDate).length;
+  if (substantive(llm) === 0 && substantive(heuristic) > 0) return heuristic;
+  return llm;
+}
+
+function mergeInferredSkills(
+  data: IntelligentResumeData,
+  inferred: {
+    technical?: Array<{ name?: string; category?: string; confidence?: number }>;
+    soft?: Array<{ name?: string; category?: string; confidence?: number }>;
+  },
+): IntelligentResumeData {
+  const byName = new Map<string, IntelligentResumeData["skills"]["all"][number]>();
+  for (const s of data.skills.all) {
+    byName.set(s.name.toLowerCase(), { ...s });
+  }
+  const add = (
+    list: Array<{ name?: string; category?: string; confidence?: number }> | undefined,
+    soft: boolean,
+  ) => {
+    for (const s of list ?? []) {
+      if (!s?.name?.trim()) continue;
+      const key = s.name.trim().toLowerCase();
+      const prev = byName.get(key);
+      if (prev) {
+        prev.confidence = Math.max(prev.confidence ?? 0, s.confidence ?? 0.7);
+        if (s.category) prev.category = s.category;
+      } else {
+        byName.set(key, {
+          name: s.name.trim(),
+          category: s.category || (soft ? "Soft" : "Technical"),
+          frequency: 1,
+          confidence: s.confidence ?? 0.7,
+        });
+      }
+    }
+  };
+  add(inferred.technical, false);
+  add(inferred.soft, true);
+
+  const all = [...byName.values()];
+  const softNames = new Set(
+    (inferred.soft ?? []).map((s) => s.name?.trim().toLowerCase()).filter(Boolean) as string[],
+  );
+  const technical = all.filter((s) => !softNames.has(s.name.toLowerCase()) || s.category !== "Soft");
+  const soft = all.filter((s) => softNames.has(s.name.toLowerCase()) || s.category === "Soft");
+
+  return {
+    ...data,
+    skills: {
+      technical: technical.length ? technical : data.skills.technical,
+      soft: soft.length ? soft : data.skills.soft,
+      all,
+    },
+  };
 }
 
 /**
@@ -146,7 +392,6 @@ export function mergeEnhancementNoInvent(
   const experience = source.experience.map((exp, i) => {
     const p = Array.isArray(polished.experience) ? polished.experience[i] : undefined;
     if (!p || !Array.isArray(p.bullets)) return exp;
-    // Keep company/title/dates from source; only accept bullet rewrites up to source length
     const bullets = exp.bullets.map((orig, bi) => {
       const next = p.bullets[bi];
       return typeof next === "string" && next.trim() ? next.trim() : orig;
@@ -174,14 +419,13 @@ export function mergeEnhancementNoInvent(
     experience,
     projects,
     achievements,
-    // Preserve factual fields from source only
     contact: source.contact,
     personal: source.personal,
     education: source.education,
     skills: source.skills,
     certifications: source.certifications,
     languages: source.languages,
-    parser: "enhanced",
+    parser: source.parser === "ollama" ? "ollama" : "enhanced",
   };
 }
 

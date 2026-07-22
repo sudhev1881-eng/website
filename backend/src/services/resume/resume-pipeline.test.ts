@@ -7,6 +7,7 @@ import { selectResumesToReplace } from "./database-manager.js";
 import {
   planAcceptedProfile,
   buildPublicProfileFallbackFromResume,
+  buildPublicAiFromResume,
   mapPublicLinks,
 } from "./profile-builder.js";
 import { coerceToIntelligentResumeData } from "./schema-mapper.js";
@@ -364,25 +365,106 @@ describe("planAcceptedProfile / ProfileBuilder", () => {
 });
 
 describe("EmbeddingGenerator", () => {
-  it("returns skipped_no_key without OPENAI_API_KEY and does not throw", async () => {
-    const prev = process.env.OPENAI_API_KEY;
+  it("returns skipped_unavailable when provider is heuristic and does not throw", async () => {
+    const keys = [
+      "RESUME_AI_PROVIDER",
+      "OPENAI_API_KEY",
+      "DATABASE_URL",
+      "SUPABASE_URL",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "JWT_SECRET",
+      "CORS_ORIGIN",
+      "SITE_URL",
+    ] as const;
+    const prev: Record<string, string | undefined> = {};
+    for (const k of keys) prev[k] = process.env[k];
+
+    process.env.RESUME_AI_PROVIDER = "heuristic";
     delete process.env.OPENAI_API_KEY;
+    process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/db";
+    process.env.SUPABASE_URL = process.env.SUPABASE_URL || "https://example.supabase.co";
+    process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "anon-key-for-tests";
+    process.env.SUPABASE_SERVICE_ROLE_KEY =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || "service-role-key-for-tests";
+    process.env.JWT_SECRET = process.env.JWT_SECRET || "x".repeat(32);
+    process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+    process.env.SITE_URL = process.env.SITE_URL || "http://localhost:3000";
+
     try {
-      // getEnv may cache — EmbeddingGenerator also checks getEnv().OPENAI_API_KEY
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
       const gen = new EmbeddingGenerator();
       const result = await gen.generate(sampleData());
-      assert.ok(result.status === "skipped_no_key" || result.status === "completed");
-      if (!process.env.OPENAI_API_KEY && result.status === "skipped_no_key") {
+      assert.ok(
+        result.status === "skipped_unavailable" ||
+          result.status === "skipped_no_key" ||
+          result.status === "completed",
+      );
+      if (result.status === "skipped_unavailable") {
         assert.equal(result.chunks.length, 0);
       }
     } finally {
-      if (prev !== undefined) process.env.OPENAI_API_KEY = prev;
+      for (const k of keys) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
     }
   });
 
-  it("builds replaceable chunks from sections", () => {
+  it("builds replaceable chunks from sections including full_resume", () => {
     const chunks = new EmbeddingGenerator().buildChunks(sampleData());
     assert.ok(chunks.some((c) => c.sectionKey === "summary"));
     assert.ok(chunks.some((c) => c.sectionKey.startsWith("experience")));
+    assert.ok(chunks.some((c) => c.section === "full_resume" || c.sectionKey === "full_resume"));
+  });
+});
+
+describe("buildPublicAiFromResume", () => {
+  it("marks ollama provider as AI-generated and surfaces domains", () => {
+    const { aiGenerated, ai } = buildPublicAiFromResume(
+      sampleData({
+        summary: "AI-polished summary",
+        domains: ["Machine Learning", "Full-Stack"],
+        classifications: ["Software Engineer"],
+        aiProvider: "ollama",
+        parser: "ollama",
+        confidence: { overall: 0.82, contact: 0.9, experience: 0.7, education: 0.6, skills: 0.85 },
+        skills: {
+          technical: [{ name: "Python", category: "Languages", frequency: 3 }],
+          soft: [],
+          all: [
+            { name: "Python", category: "Languages", frequency: 3 },
+            { name: "TypeScript", category: "Languages", frequency: 2 },
+            { name: "PyTorch", category: "ML", frequency: 2 },
+          ],
+        },
+      }),
+    );
+    assert.equal(aiGenerated, true);
+    assert.ok(ai);
+    assert.equal(ai!.generated, true);
+    assert.equal(ai!.summary, "AI-polished summary");
+    assert.ok(ai!.insights.some((i) => /Machine Learning/.test(i.title)));
+    assert.ok(ai!.skillInsights.length >= 1);
+    assert.equal(ai!.score, 82);
+  });
+
+  it("returns non-generated payload for heuristic parses", () => {
+    const { aiGenerated, ai } = buildPublicAiFromResume(
+      sampleData({ aiProvider: "heuristic", parser: "heuristic", summary: "Heuristic bio" }),
+    );
+    assert.equal(aiGenerated, false);
+    assert.ok(ai);
+    assert.equal(ai!.generated, false);
+    assert.equal(ai!.summary, "Heuristic bio");
+  });
+
+  it("returns null ai when data is missing", () => {
+    const { aiGenerated, ai } = buildPublicAiFromResume(null);
+    assert.equal(aiGenerated, false);
+    assert.equal(ai, null);
   });
 });

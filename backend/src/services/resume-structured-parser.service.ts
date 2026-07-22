@@ -1,5 +1,3 @@
-import { getEnv } from "../config/env.js";
-import { logger } from "../config/logger.js";
 import { getSkillCategory } from "../data/skill-dictionary.js";
 import { parseSkillsFromText, type ParsedSkill } from "./skill-parser.service.js";
 
@@ -141,38 +139,16 @@ const SECTION_ALIAS_ENTRIES: Array<{ key: string; alias: string }> = Object.entr
   .flatMap(([key, aliases]) => aliases.map((alias) => ({ key, alias })))
   .sort((a, b) => b.alias.length - a.alias.length);
 
-const MAX_LLM_CHARS = 12_000;
-
 /**
  * Full structured resume parse.
- * Heuristics always run (free). Optional OpenAI refinement when OPENAI_API_KEY is set.
+ * Heuristics always run (free). LLM refinement is handled by the intelligent
+ * resume pipeline via Ollama (see services/ai) — this path stays heuristic-only
+ * so OPENAI_API_KEY is not required for resume intelligence.
  *
  * Note: scanned/image-only PDFs still need OCR — out of scope here; we only parse extractable text.
  */
 export async function parseResumeStructured(rawText: string): Promise<StructuredParseResult> {
-  const heuristic = parseResumeHeuristic(rawText);
-
-  const apiKey = safeOpenAiKey();
-  if (!apiKey || !rawText.trim()) {
-    return heuristic;
-  }
-
-  try {
-    const refined = await refineWithLlm(heuristic.structuredData, rawText, apiKey);
-    if (!refined) return heuristic;
-
-    const skills = mergeSkillsForUpsert(refined.skills, heuristic.skills);
-    return {
-      structuredData: refined,
-      skills,
-      extractionConfidence: refined.confidence.overall,
-    };
-  } catch (err) {
-    logger.warn("Resume LLM refinement failed; keeping heuristic result", {
-      message: err instanceof Error ? err.message : String(err),
-    });
-    return heuristic;
-  }
+  return parseResumeHeuristic(rawText);
 }
 
 /** Sync heuristic-only parse (also used by tests). */
@@ -1050,77 +1026,6 @@ function computeConfidence(parts: {
   };
 }
 
-async function refineWithLlm(
-  heuristic: StructuredResumeData,
-  rawText: string,
-  apiKey: string,
-): Promise<StructuredResumeData | null> {
-  const model = getEnv().OPENAI_MODEL;
-  const truncated = rawText.slice(0, MAX_LLM_CHARS);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25_000);
-
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        temperature: 0,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: `You refine resume parsing into strict JSON. Return ONLY JSON matching this shape:
-{"contact":{"emails":[],"phones":[],"linkedin":null,"github":null,"website":null,"address":null,"name":null},
-"summary":null,
-"experience":[{"title":null,"company":null,"location":null,"startDate":null,"endDate":null,"bullets":[],"raw":""}],
-"education":[{"school":null,"degree":null,"field":null,"startDate":null,"endDate":null,"gpa":null,"raw":""}],
-"skills":[{"name":"","category":"","frequency":1}],
-"certifications":[{"name":"","issuer":null,"date":null}],
-"projects":[{"name":null,"description":null,"technologies":[],"url":null}],
-"languages":[]}
-Use null for missing strings. Prefer facts from the resume text. Keep skill names concise.`,
-          },
-          {
-            role: "user",
-            content: `Heuristic parse (may be incomplete):\n${JSON.stringify({
-              contact: heuristic.contact,
-              summary: heuristic.summary,
-              experience: heuristic.experience.slice(0, 8),
-              education: heuristic.education.slice(0, 6),
-              skills: heuristic.skills.slice(0, 40),
-              certifications: heuristic.certifications.slice(0, 15),
-              projects: heuristic.projects.slice(0, 10),
-              languages: heuristic.languages,
-            })}\n\nResume text:\n${truncated}`,
-          },
-        ],
-      }),
-    });
-
-    if (!res.ok) {
-      logger.warn("Resume LLM API non-OK", { status: res.status });
-      return null;
-    }
-
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-
-    const parsed = JSON.parse(content) as Partial<StructuredResumeData>;
-    return mergeLlmIntoHeuristic(heuristic, parsed);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** Exported for unit tests — merges LLM JSON onto heuristic base. */
 export function mergeLlmIntoHeuristic(
   heuristic: StructuredResumeData,
@@ -1227,32 +1132,6 @@ function mergeSkillLists(
   return [...byName.values()];
 }
 
-function mergeSkillsForUpsert(
-  structuredSkills: StructuredResumeData["skills"],
-  heuristicSkills: ParsedSkill[],
-): ParsedSkill[] {
-  const byName = new Map<string, ParsedSkill>();
-  for (const s of heuristicSkills) {
-    byName.set(s.name.toLowerCase(), { ...s });
-  }
-  for (const s of structuredSkills) {
-    const key = s.name.toLowerCase();
-    const prev = byName.get(key);
-    if (prev) {
-      prev.mentionCount = Math.max(prev.mentionCount, s.frequency || 1);
-      prev.confidence = Math.max(prev.confidence, s.confidence ?? 0.75);
-    } else {
-      byName.set(key, {
-        name: s.name,
-        category: getSkillCategory(s.name),
-        confidence: s.confidence ?? 0.75,
-        mentionCount: s.frequency || 1,
-      });
-    }
-  }
-  return [...byName.values()];
-}
-
 /**
  * Never let an empty or hollow LLM experience array wipe a non-empty heuristic result.
  */
@@ -1284,14 +1163,6 @@ function preferRicherExperience(
 
 function preferNonEmptyArray(a: string[] | undefined, b: string[]): string[] {
   return a && a.length > 0 ? a : b;
-}
-
-function safeOpenAiKey(): string | undefined {
-  try {
-    return getEnv().OPENAI_API_KEY;
-  } catch {
-    return undefined;
-  }
 }
 
 function matchAll(text: string, re: RegExp): string[] {

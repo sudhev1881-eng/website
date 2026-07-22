@@ -28,6 +28,7 @@ import { useStudentData } from "@/providers/student-data-provider";
 import {
   api,
   fileUrl,
+  type ResumeAiStatus,
   type ResumeStatusDetail,
   type ResumeValidationFlag,
   type ResumeSectionDecision,
@@ -61,7 +62,7 @@ function processingBadgeVariant(
   }
 }
 
-function processingLabel(status: string | undefined): string {
+function processingLabel(status: string | undefined, autoApply?: boolean): string {
   switch (status) {
     case "pending":
     case "uploaded":
@@ -70,16 +71,16 @@ function processingLabel(status: string | undefined): string {
     case "extracting":
       return "Extracting…";
     case "enhancing":
-      return "Enhancing…";
+      return "AI analyzing…";
     case "validating":
       return "Validating…";
     case "awaiting_confirmation":
-      return "Review required";
+      return autoApply === false ? "Review required" : "Ready to apply";
     case "embedding":
-      return "Indexing…";
+      return "Updating profile…";
     case "completed":
     case "confirmed":
-      return "Active profile";
+      return "Profile updated";
     case "failed":
       return "Processing failed";
     case "skipped":
@@ -99,28 +100,52 @@ const PIPELINE_STAGES = [
   "awaiting_confirmation",
 ] as const;
 
-function stageIndex(status: string | undefined, stage: string | null | undefined): number {
+const AUTO_PIPELINE_STAGES = [
+  "uploaded",
+  "extracting",
+  "enhancing",
+  "validating",
+  "embedding",
+  "confirmed",
+] as const;
+
+function stageIndex(
+  status: string | undefined,
+  stage: string | null | undefined,
+  stages: readonly string[],
+): number {
   const key = stage || status || "";
-  const idx = PIPELINE_STAGES.indexOf(key as (typeof PIPELINE_STAGES)[number]);
+  const idx = stages.indexOf(key);
   if (idx >= 0) return idx;
   if (status === "pending") return 0;
   if (status === "processing") return 1;
-  if (status === "confirmed" || status === "completed") return PIPELINE_STAGES.length;
+  if (status === "confirmed" || status === "completed") return stages.length;
+  if (status === "embedding") {
+    const emb = stages.indexOf("embedding");
+    return emb >= 0 ? emb : stages.length - 1;
+  }
   return -1;
 }
 
 function PipelineProgress({
   status,
   stage,
+  autoApply,
 }: {
   status?: string;
   stage?: string | null;
+  autoApply?: boolean;
 }) {
-  const current = stageIndex(status, stage);
+  const stages = autoApply ? AUTO_PIPELINE_STAGES : PIPELINE_STAGES;
+  const current = stageIndex(status, stage, stages);
   return (
     <ol className="flex flex-wrap gap-2 text-xs">
-      {PIPELINE_STAGES.map((s, i) => {
-        const done = current > i || status === "awaiting_confirmation" || status === "confirmed";
+      {stages.map((s, i) => {
+        const done =
+          current > i ||
+          status === "awaiting_confirmation" ||
+          status === "confirmed" ||
+          status === "completed";
         const active = current === i;
         return (
           <li
@@ -133,11 +158,25 @@ function PipelineProgress({
                   : "border-border text-muted-foreground"
             }`}
           >
-            {s.replace(/_/g, " ")}
+            {s === "confirmed" ? "profile updated" : s.replace(/_/g, " ")}
           </li>
         );
       })}
     </ol>
+  );
+}
+
+function AiProviderHint({ status }: { status: ResumeAiStatus | null }) {
+  if (!status) return null;
+  const connected = status.ollamaReachable && status.activeProvider === "ollama";
+  return (
+    <p className="text-xs text-muted-foreground">
+      {connected
+        ? `AI: Ollama connected (${status.chatModel ?? "chat"})`
+        : status.fellBackToHeuristic || status.activeProvider === "heuristic"
+          ? "AI: heuristic fallback (Ollama unavailable)"
+          : "AI: checking Ollama…"}
+    </p>
   );
 }
 
@@ -190,7 +229,7 @@ function SectionActions({
       <Button
         type="button"
         size="sm"
-        variant={accepted ? "default" : "outline"}
+        variant={accepted ? "primary" : "outline"}
         disabled={busy}
         onClick={() => onAction("accept")}
         title={`Accept ${sectionKey}`}
@@ -593,6 +632,10 @@ export function StudentResume() {
   const [uploading, setUploading] = React.useState(false);
   const [draftId, setDraftId] = React.useState<string | null>(null);
   const [draftDetail, setDraftDetail] = React.useState<ResumeStatusDetail | null>(null);
+  const [aiStatus, setAiStatus] = React.useState<ResumeAiStatus | null>(null);
+  const [autoAppliedBanner, setAutoAppliedBanner] = React.useState(false);
+
+  const requireConfirmation = aiStatus?.requireConfirmation ?? false;
 
   const loadResumes = React.useCallback(() => {
     api.students
@@ -607,6 +650,10 @@ export function StudentResume() {
 
   React.useEffect(() => {
     loadResumes();
+    api.students
+      .resumeAiStatus()
+      .then(setAiStatus)
+      .catch(() => setAiStatus(null));
   }, [data?.resume, loadResumes]);
 
   const {
@@ -621,24 +668,41 @@ export function StudentResume() {
   }, [draftStatus]);
 
   React.useEffect(() => {
-    if (draftStatus?.processingStatus === "confirmed" || draftStatus?.processingStatus === "rejected") {
+    if (draftStatus?.processingStatus === "confirmed" || draftStatus?.processingStatus === "completed") {
+      if (!requireConfirmation) {
+        setAutoAppliedBanner(true);
+        toast.success("Profile updated from your resume");
+      }
+      setDraftId(null);
+      setDraftDetail(null);
+      void refresh();
+      loadResumes();
+      api.students.resumeAiStatus().then(setAiStatus).catch(() => undefined);
+    } else if (draftStatus?.processingStatus === "rejected") {
       setDraftId(null);
       setDraftDetail(null);
       void refresh();
       loadResumes();
     }
-  }, [draftStatus?.processingStatus, refresh, loadResumes]);
+  }, [draftStatus?.processingStatus, refresh, loadResumes, requireConfirmation]);
 
   const handleUpload = async (files: File[]) => {
     const file = files[0];
     if (!file) return;
     setUploading(true);
+    setAutoAppliedBanner(false);
     try {
       const uploaded = await api.students.uploadResume(file);
       if (uploaded.id) setDraftId(uploaded.id);
       await refresh();
       loadResumes();
-      toast.success("Resume uploaded — processing draft for your review…");
+      const status = await api.students.resumeAiStatus().catch(() => null);
+      if (status) setAiStatus(status);
+      toast.success(
+        status?.requireConfirmation
+          ? "Resume uploaded — processing draft for your review…"
+          : "Resume uploaded — AI is updating your profile…",
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -660,6 +724,7 @@ export function StudentResume() {
   const uploadHelper = "PDF or DOCX recommended · legacy .doc saved without AI parse · max 10MB";
 
   const showDraftReview =
+    requireConfirmation &&
     draftDetail &&
     (awaitsConfirmation || draftDetail.processingStatus === "awaiting_confirmation") &&
     draftDetail.processingStatus !== "rejected";
@@ -669,10 +734,15 @@ export function StudentResume() {
       <div>
         <PageHeader
           title="Resume"
-          description="Upload one resume. Review extracted sections before they update your profile."
+          description={
+            requireConfirmation
+              ? "Upload one resume. Review extracted sections before they update your profile."
+              : "Upload one resume. AI fills your public profile automatically."
+          }
         />
         <Card className="shadow-card">
-          <CardContent className="p-6">
+          <CardContent className="space-y-3 p-6">
+            <AiProviderHint status={aiStatus} />
             {uploading ? (
               <div className="flex justify-center py-8">
                 <Spinner size="lg" />
@@ -690,7 +760,11 @@ export function StudentResume() {
         <EmptyState
           icon={<FileText className="h-6 w-6" />}
           title="No resume uploaded"
-          description="Upload a PDF or DOCX to extract and confirm your profile."
+          description={
+            requireConfirmation
+              ? "Upload a PDF or DOCX to extract and confirm your profile."
+              : "Upload a PDF or DOCX — your profile sections fill in automatically."
+          }
         />
       </div>
     );
@@ -700,7 +774,11 @@ export function StudentResume() {
     <div>
       <PageHeader
         title="Resume"
-        description="One active resume per profile. New uploads stay as drafts until you confirm."
+        description={
+          requireConfirmation
+            ? "One active resume per profile. New uploads stay as drafts until you confirm."
+            : "One active resume per profile. New uploads are analyzed and applied automatically."
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -729,6 +807,13 @@ export function StudentResume() {
                   Download
                 </Button>
               </div>
+              {autoAppliedBanner ? (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-foreground">
+                  Profile updated — experience, projects, skills, and related sections were filled from
+                  this resume.
+                </div>
+              ) : null}
+              <AiProviderHint status={aiStatus} />
             </CardContent>
           </Card>
         ) : (
@@ -736,17 +821,20 @@ export function StudentResume() {
             <CardHeader>
               <CardTitle>Active resume</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-2">
               <p className="text-sm text-muted-foreground">
-                No confirmed resume yet. Confirm your draft to publish one.
+                {requireConfirmation
+                  ? "No confirmed resume yet. Confirm your draft to publish one."
+                  : "No active resume yet. Upload a PDF or DOCX to populate your profile."}
               </p>
+              <AiProviderHint status={aiStatus} />
             </CardContent>
           </Card>
         )}
 
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Upload new draft</CardTitle>
+            <CardTitle>{requireConfirmation ? "Upload new draft" : "Upload resume"}</CardTitle>
           </CardHeader>
           <CardContent>
             {uploading ? (
@@ -759,7 +847,9 @@ export function StudentResume() {
                 accept=".pdf,.doc,.docx"
                 helperText={
                   draftId
-                    ? "Uploading replaces your current draft only — active resume stays until you confirm."
+                    ? requireConfirmation
+                      ? "Uploading replaces your current draft only — active resume stays until you confirm."
+                      : "Uploading replaces the in-progress resume and will update your profile when done."
                     : uploadHelper
                 }
                 onUpload={handleUpload}
@@ -773,48 +863,71 @@ export function StudentResume() {
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                Draft review
+                {requireConfirmation ? "Draft review" : "Resume intelligence"}
                 {draftDetail?.processingStatus ? (
                   <Badge variant={processingBadgeVariant(draftDetail.processingStatus)}>
                     {isProcessing ? (
                       <span className="inline-flex items-center gap-1">
                         <Spinner size="sm" />
-                        {processingLabel(draftDetail.processingStatus)}
+                        {processingLabel(draftDetail.processingStatus, requireConfirmation)}
                       </span>
                     ) : (
-                      processingLabel(draftDetail.processingStatus)
+                      processingLabel(draftDetail.processingStatus, requireConfirmation)
                     )}
                   </Badge>
                 ) : null}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {isProcessing ? (
+              <AiProviderHint status={aiStatus} />
+              {isProcessing ||
+              (!requireConfirmation &&
+                draftDetail &&
+                !awaitsConfirmation &&
+                draftDetail.processingStatus !== "failed") ? (
                 <>
                   <PipelineProgress
                     status={draftDetail?.processingStatus}
                     stage={draftDetail?.processingStage}
+                    autoApply={!requireConfirmation}
                   />
                   <div className="flex items-center gap-3 py-2 text-sm text-muted-foreground">
-                    <Spinner />
-                    Parsing and preparing sections for your confirmation…
+                    {isProcessing ? <Spinner /> : null}
+                    {isProcessing
+                      ? "Extracting, analyzing, and applying sections to your profile…"
+                      : "Waiting for status…"}
                   </div>
                 </>
-              ) : showDraftReview && draftDetail ? (
-                <DraftReviewPanel
-                  draft={draftDetail}
-                  onUpdated={(next) => {
-                    if (next.processingStatus === "confirmed" || next.processingStatus === "rejected") {
-                      setDraftId(null);
-                      setDraftDetail(null);
-                      void refresh();
-                      loadResumes();
-                      return;
-                    }
-                    setDraftDetail(next);
-                    void refreshDraftStatus();
-                  }}
-                />
+              ) : (showDraftReview ||
+                  (!requireConfirmation &&
+                    awaitsConfirmation &&
+                    draftDetail?.processingStatus === "awaiting_confirmation")) &&
+                draftDetail ? (
+                <>
+                  {!requireConfirmation ? (
+                    <p className="text-sm text-muted-foreground">
+                      Automatic apply needed a review. Accept or confirm sections below to finish updating
+                      your profile.
+                    </p>
+                  ) : null}
+                  <DraftReviewPanel
+                    draft={draftDetail}
+                    onUpdated={(next) => {
+                      if (
+                        next.processingStatus === "confirmed" ||
+                        next.processingStatus === "rejected"
+                      ) {
+                        setDraftId(null);
+                        setDraftDetail(null);
+                        void refresh();
+                        loadResumes();
+                        return;
+                      }
+                      setDraftDetail(next);
+                      void refreshDraftStatus();
+                    }}
+                  />
+                </>
               ) : draftDetail?.errorMessage ? (
                 <p className="text-sm text-muted-foreground">{draftDetail.errorMessage}</p>
               ) : (
@@ -834,8 +947,9 @@ export function StudentResume() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                Upload a new PDF or DOCX to extract sections, review them, and replace this resume.
-                Only accepted fields update your profile on confirm.
+                {requireConfirmation
+                  ? "Upload a new PDF or DOCX to extract sections, review them, and replace this resume. Only accepted fields update your profile on confirm."
+                  : "Upload a new PDF or DOCX to replace this resume and refresh profile sections automatically."}
               </p>
             </CardContent>
           </Card>

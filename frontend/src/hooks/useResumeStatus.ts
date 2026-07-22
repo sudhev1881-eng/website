@@ -83,6 +83,16 @@ export function useResumeStatus(
 
   const isProcessing = status ? PROCESSING.has(status.processingStatus) : false;
   const awaitsConfirmation = status?.processingStatus === "awaiting_confirmation";
+  const isConfirmed =
+    status?.processingStatus === "confirmed" || status?.processingStatus === "completed";
 
-  return { status, loading, error, isProcessing, awaitsConfirmation, refresh: fetchOnce };
+  return {
+    status,
+    loading,
+    error,
+    isProcessing,
+    awaitsConfirmation,
+    isConfirmed,
+    refresh: fetchOnce,
+  };
 }

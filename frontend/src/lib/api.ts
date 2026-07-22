@@ -199,6 +199,49 @@ export interface StudentDashboardData {
   };
 }
 
+/** Optional availability flags for recruiter CTAs (omit when unknown). */
+export interface PublicProfileAvailability {
+  internship?: boolean;
+  fullTime?: boolean;
+  research?: boolean;
+}
+
+export interface PublicProfileEducation {
+  id: string;
+  school: string;
+  degree?: string | null;
+  field?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  gpa?: string | null;
+}
+
+/** Optional Ollama / AI enrichment — all fields optional for graceful fallback. */
+export interface PublicProfileAi {
+  summary?: string | null;
+  title?: string | null;
+  generated?: boolean;
+  insights?: Array<{
+    id?: string;
+    title: string;
+    detail: string;
+    confidence?: number;
+  }>;
+  skillInsights?: Array<{
+    category: string;
+    strength: string;
+    detail?: string;
+    confidence?: number;
+  }>;
+  score?: number | null;
+  scores?: {
+    overall?: number | null;
+    technical?: number | null;
+    experience?: number | null;
+    projects?: number | null;
+  };
+}
+
 export interface PublicProfile {
   username: string;
   name: string;
@@ -211,13 +254,31 @@ export interface PublicProfile {
   github: string;
   linkedin: string;
   portfolio: string;
+  location?: string | null;
+  graduationYear?: number | null;
+  gpa?: string | null;
+  visaStatus?: string | null;
+  availability?: PublicProfileAvailability | null;
+  education?: PublicProfileEducation[];
+  languages?: Array<{ name: string; proficiency?: string | null }>;
+  interests?: string[];
+  volunteer?: Array<{
+    role?: string | null;
+    organization?: string | null;
+    period?: string | null;
+    description?: string | null;
+  }>;
+  updatedAt?: string | null;
+  /** When true (or ai.generated), summary section is labeled “AI Summary”. */
+  aiGenerated?: boolean;
+  ai?: PublicProfileAi | null;
   /** @deprecated Private contact is no longer returned on public profiles */
   email?: string;
   /** @deprecated Private contact is no longer returned on public profiles */
   phone?: string;
   resume: StudentDashboardData["resume"];
   projects: StudentDashboardData["projects"];
-  skills: StudentDashboardData["skills"];
+  skills: Array<{ id?: string; name: string; level: number; category: string }>;
   certificates: StudentDashboardData["certificates"];
   experience: StudentDashboardData["experience"];
 }
@@ -362,7 +423,22 @@ export interface ExtractedResumeStructuredData {
     education: number;
     skills: number;
   };
-  parser?: "heuristic" | "heuristic+llm" | "enhanced";
+  parser?: "heuristic" | "heuristic+llm" | "enhanced" | "ollama";
+  aiProvider?: "ollama" | "heuristic";
+  domains?: string[];
+  classifications?: string[];
+}
+
+export interface ResumeAiStatus {
+  configuredProvider: "ollama" | "heuristic";
+  activeProvider: "ollama" | "heuristic";
+  ollamaReachable: boolean;
+  chatModel: string | null;
+  embedModel: string | null;
+  baseUrl: string | null;
+  requireConfirmation: boolean;
+  fellBackToHeuristic: boolean;
+  error?: string;
 }
 
 export interface ResumeStatusDetail {
@@ -494,6 +570,8 @@ export const api = {
     resumeHistory: () => request<ResumeVersion[]>("/students/me/resumes"),
 
     resumeDraft: () => request<ResumeStatusDetail | null>("/students/me/resumes/draft"),
+
+    resumeAiStatus: () => request<ResumeAiStatus>("/students/me/resumes/ai-status"),
 
     resumeStatus: (resumeId: string) =>
       request<ResumeStatusDetail>(`/students/me/resumes/${resumeId}`),

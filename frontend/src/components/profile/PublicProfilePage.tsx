@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { PublicProfileView } from "@/components/profile/PublicProfileView";
-import { Spinner } from "@/components/ui/spinner";
+import { PublicProfileShell } from "@/components/profile/public/PublicProfileShell";
+import { PublicProfileSkeleton } from "@/components/profile/public/PublicProfileSkeleton";
 import { api, ApiError, type PublicProfile } from "@/lib/api";
 import {
   SetupError,
@@ -32,7 +32,6 @@ export function PublicProfilePage({
         if (err instanceof ApiError) {
           setError({ message: err.message, status: err.status });
         } else if (err instanceof TypeError) {
-          // Browser network / CORS / wrong API host → "Failed to fetch"
           setError({ message: err.message || "Failed to reach API", status: null });
         } else {
           setError({
@@ -45,11 +44,7 @@ export function PublicProfilePage({
   }, [slug, source]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <PublicProfileSkeleton />;
   }
 
   if (error) {
@@ -82,5 +77,5 @@ export function PublicProfilePage({
     return null;
   }
 
-  return <PublicProfileView profile={profile} slug={slug} />;
+  return <PublicProfileShell profile={profile} slug={slug} />;
 }

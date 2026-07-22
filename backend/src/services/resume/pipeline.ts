@@ -1,9 +1,11 @@
+import { getEnv } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { downloadFile } from "../storage.js";
 import { resumeParser } from "./resume-parser.service.js";
 import { aiEnhancementEngine } from "./ai-enhancement.engine.js";
 import { validationEngine } from "./validation-engine.js";
 import { databaseManager } from "./database-manager.js";
+import { userConfirmationService } from "./user-confirmation.service.js";
 import { emptyIntelligentResumeData } from "./types.js";
 
 export interface ResumePipelineJobData {
@@ -14,8 +16,8 @@ export interface ResumePipelineJobData {
 }
 
 /**
- * Orchestrates: extracting → enhancing → validating → awaiting_confirmation.
- * Does NOT mutate student skills/experience until user confirms.
+ * Orchestrates: extracting → enhancing → validating →
+ *   (RESUME_REQUIRE_CONFIRMATION ? awaiting_confirmation : auto-confirm + embed).
  */
 export async function runIntelligentResumePipeline(data: ResumePipelineJobData): Promise<void> {
   const { resumeId, studentId, filePath, fileName } = data;
@@ -28,6 +30,10 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
 
     await databaseManager.setStage(resumeId, studentId, "extracting", "extracting");
     const parsed = await resumeParser.parseBuffer(buffer, fileName ?? filePath);
+
+    if (!parsed.rawText.trim()) {
+      logger.warn("Empty resume text extract", { resumeId, studentId });
+    }
 
     await databaseManager.setStage(resumeId, studentId, "enhancing", "enhancing");
     const enhancement = await aiEnhancementEngine.enhance(parsed.data, parsed.rawText);
@@ -44,6 +50,8 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
       validationFlags: flags,
     });
 
+    const requireConfirmation = getEnv().RESUME_REQUIRE_CONFIRMATION;
+
     await databaseManager.setStage(
       resumeId,
       studentId,
@@ -51,14 +59,51 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
       "awaiting_confirmation",
     );
 
-    logger.info("Intelligent resume pipeline awaiting confirmation", {
+    if (requireConfirmation) {
+      logger.info("Intelligent resume pipeline awaiting confirmation", {
+        resumeId,
+        studentId,
+        enhanced: enhancement.enhanced,
+        provider: enhancement.provider,
+        skippedReason: enhancement.skippedReason,
+        flagCount: flags.length,
+        parser: enhancement.data.parser,
+      });
+      return;
+    }
+
+    // Auto-apply: confirm draft → profile tables + embeddings (no manual review)
+    logger.info("Auto-applying resume to profile (RESUME_REQUIRE_CONFIRMATION=false)", {
       resumeId,
       studentId,
-      enhanced: enhancement.enhanced,
-      skippedReason: enhancement.skippedReason,
-      flagCount: flags.length,
-      parser: enhancement.data.parser,
+      provider: enhancement.provider,
     });
+
+    try {
+      const result = await userConfirmationService.confirm(studentId, resumeId, {
+        autoApply: true,
+      });
+      logger.info("Intelligent resume pipeline auto-confirmed", {
+        resumeId,
+        studentId,
+        embeddingStatus: result.embeddingStatus,
+        provider: enhancement.provider,
+      });
+    } catch (confirmErr) {
+      // Soft-fail auto-apply: leave awaiting_confirmation so user can finish manually
+      logger.error("Auto-confirm failed; leaving draft for manual review", {
+        resumeId,
+        studentId,
+        message: confirmErr instanceof Error ? confirmErr.message : String(confirmErr),
+      });
+      await databaseManager.setStage(
+        resumeId,
+        studentId,
+        "awaiting_confirmation",
+        "awaiting_confirmation",
+        confirmErr instanceof Error ? confirmErr.message.slice(0, 1000) : "Auto-apply failed",
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Resume processing failed";
     logger.error("Intelligent resume pipeline failed", { resumeId, studentId, message });

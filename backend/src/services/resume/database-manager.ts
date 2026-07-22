@@ -3,12 +3,14 @@ import { logger } from "../../config/logger.js";
 import type {
   EmbeddingChunk,
   IntelligentResumeData,
+  ResumeVectorRow,
   SectionDecisions,
   ValidationFlag,
 } from "./types.js";
 import { defaultSectionDecisions } from "./types.js";
 import { toLegacyStructuredView } from "./schema-mapper.js";
 import { planAcceptedProfile } from "./profile-builder.js";
+import { resumeVectorStore } from "./vector-store.js";
 
 /**
  * DatabaseManager / ProfileBuilder — draft persistence + profile apply.
@@ -178,8 +180,17 @@ export class DatabaseManager {
 
       const previousFilePaths = previous.rows.map((r) => r.file_path).filter(Boolean) as string[];
 
-      // Delete embeddings for student (will recreate for new resume)
+      // Delete embeddings / vectors for student (will recreate for new resume)
       await tx(`DELETE FROM resume_embeddings WHERE student_id = $1`, [params.studentId]);
+      const vectorsTable = await tx<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM information_schema.tables
+           WHERE table_schema = 'public' AND table_name = 'resume_vectors'
+         ) AS exists`,
+      );
+      if (vectorsTable.rows[0]?.exists) {
+        await tx(`DELETE FROM resume_vectors WHERE student_id = $1`, [params.studentId]);
+      }
 
       for (const old of previous.rows) {
         await tx(`DELETE FROM resumes WHERE id = $1`, [old.id]);
@@ -287,17 +298,33 @@ export class DatabaseManager {
     resumeId: string;
     chunks: EmbeddingChunk[];
     status: string;
+    provider?: string;
+    model?: string;
+    vectorRows?: Array<Omit<ResumeVectorRow, "studentId" | "resumeId">>;
   }): Promise<void> {
-    await query(
-      `INSERT INTO resume_embeddings (student_id, resume_id, chunks, embedding_status, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4, NOW())
-       ON CONFLICT (student_id) DO UPDATE SET
-         resume_id = EXCLUDED.resume_id,
-         chunks = EXCLUDED.chunks,
-         embedding_status = EXCLUDED.embedding_status,
-         updated_at = NOW()`,
-      [params.studentId, params.resumeId, JSON.stringify(params.chunks), params.status],
-    );
+    await resumeVectorStore.replaceLegacyEmbeddings({
+      studentId: params.studentId,
+      resumeId: params.resumeId,
+      chunks: params.chunks,
+      status: params.status,
+      provider: params.provider,
+      model: params.model,
+    });
+
+    if (params.vectorRows && params.vectorRows.length > 0) {
+      try {
+        await resumeVectorStore.replaceActiveVectors({
+          studentId: params.studentId,
+          resumeId: params.resumeId,
+          rows: params.vectorRows,
+        });
+      } catch (err) {
+        // Table may not exist until migration 011 — never block confirm
+        logger.warn("resume_vectors write failed (run migration 011?)", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   async deleteResumeRow(resumeId: string, studentId: string): Promise<string | null> {

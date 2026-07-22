@@ -2,9 +2,14 @@ import { Router } from "express";
 import { query } from "../db/pool.js";
 import { logProfileEvent } from "../services/analytics.js";
 import { resolvePublicFileUrl } from "../services/storage.js";
-import { buildPublicProfileFallbackFromResume } from "../services/resume/profile-builder.js";
+import {
+  buildPublicAiFromResume,
+  buildPublicProfileFallbackFromResume,
+  buildSecondaryPublicFields,
+} from "../services/resume/profile-builder.js";
 import { coerceToIntelligentResumeData } from "../services/resume/schema-mapper.js";
 import type { SectionDecisions } from "../services/resume/types.js";
+import { logger } from "../config/logger.js";
 
 export const profilesRouter = Router();
 
@@ -138,6 +143,19 @@ profilesRouter.get("/:slug", async (req, res) => {
     let github = (s.github as string) || "";
     let linkedin = (s.linkedin as string) || "";
     let portfolio = (s.portfolio as string) || "";
+    let location = (s.location as string) || "";
+    const graduationYear =
+      typeof s.graduation_year === "number" ? (s.graduation_year as number) : null;
+    let gpa: string | null = null;
+    let educationRows: Array<{
+      id: string;
+      school: string;
+      degree: string | null;
+      field: string | null;
+      startDate: string | null;
+      endDate: string | null;
+      gpa: string | null;
+    }> = [];
 
     let projectRows = projects.rows.map((p) => ({
       id: p.id,
@@ -150,6 +168,7 @@ profilesRouter.get("/:slug", async (req, res) => {
     }));
 
     let skillRows = skills.rows.map((sk) => ({
+      id: sk.id as string | undefined,
       name: sk.name,
       level: sk.level,
       category: sk.category,
@@ -193,8 +212,10 @@ profilesRouter.get("/:slug", async (req, res) => {
         projectRows.length === 0 ||
         skillRows.length === 0 ||
         certificateRows.length === 0 ||
+        educationRows.length === 0 ||
         empty(university) ||
         empty(major) ||
+        empty(location) ||
         empty(github) ||
         empty(linkedin) ||
         empty(portfolio));
@@ -218,6 +239,7 @@ profilesRouter.get("/:slug", async (req, res) => {
         if (empty(github) && fb.github) github = fb.github;
         if (empty(linkedin) && fb.linkedin) linkedin = fb.linkedin;
         if (empty(portfolio) && fb.portfolio) portfolio = fb.portfolio;
+        if (empty(location) && fb.location) location = fb.location;
 
         if (experienceRows.length === 0 && fb.experience.length > 0) {
           experienceRows = fb.experience;
@@ -229,15 +251,49 @@ profilesRouter.get("/:slug", async (req, res) => {
           }));
         }
         if (skillRows.length === 0 && fb.skills.length > 0) {
-          skillRows = fb.skills;
+          skillRows = fb.skills.map((sk) => ({
+            id: undefined as string | undefined,
+            name: sk.name,
+            level: sk.level,
+            category: sk.category,
+          }));
         }
         if (certificateRows.length === 0 && fb.certificates.length > 0) {
           certificateRows = fb.certificates;
         }
+        if (educationRows.length === 0 && fb.education.length > 0) {
+          educationRows = fb.education;
+        }
+        if (!gpa && fb.gpa) gpa = fb.gpa;
       } catch (fallbackErr) {
         // Never fail the public profile because resume-shaped fallback data is incomplete
-        console.error("GET /profiles/:slug resume fallback skipped:", fallbackErr);
+        logger.warn("GET /profiles/:slug resume fallback skipped", {
+          error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr),
+        });
       }
+    }
+
+    // Seed education from student record when resume education is empty
+    if (educationRows.length === 0 && (university || major)) {
+      educationRows = [
+        {
+          id: "student-edu",
+          school: university || "University",
+          degree: null,
+          field: major || null,
+          startDate: null,
+          endDate: graduationYear ? String(graduationYear) : null,
+          gpa: null,
+        },
+      ];
+    }
+
+    const { aiGenerated, ai } = buildPublicAiFromResume(enhanced);
+    const secondary = buildSecondaryPublicFields(enhanced);
+
+    // Prefer AI title when student title is empty / default
+    if (ai?.title && (empty(title) || title === "Student")) {
+      title = ai.title;
     }
 
     res.json({
@@ -252,6 +308,18 @@ profilesRouter.get("/:slug", async (req, res) => {
       github,
       linkedin,
       portfolio,
+      location: location || null,
+      graduationYear,
+      gpa,
+      education: educationRows,
+      languages: secondary.languages,
+      interests: secondary.interests,
+      volunteer: secondary.volunteer,
+      updatedAt: s.updated_at
+        ? new Date(s.updated_at as string | Date).toISOString()
+        : null,
+      aiGenerated,
+      ai,
       // Private contact intentionally omitted from public profiles
       resume: formatResume(resumeRow),
       projects: projectRows,
@@ -260,7 +328,9 @@ profilesRouter.get("/:slug", async (req, res) => {
       experience: experienceRows,
     });
   } catch (err) {
-    console.error("GET /profiles/:slug error:", err);
+    logger.error("GET /profiles/:slug error", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     res.status(500).json({ error: "Failed to fetch profile" });
   }
 });

@@ -75,12 +75,41 @@ const envSchema = z.object({
     ),
   TELEGRAM_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
   TELEGRAM_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
-  /** Optional — enables LLM-assisted NL parsing when set. Core commands work without it. */
+  /** Optional — Telegram NL assist only. Resume intelligence uses Ollama (see RESUME_AI_PROVIDER). */
   OPENAI_API_KEY: z
     .string()
     .optional()
     .transform((v) => (v && v.trim() ? v.trim() : undefined)),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
+  /** Ollama HTTP API — must be reachable from the API host (not in-process on Render free). */
+  OLLAMA_BASE_URL: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim().replace(/\/$/, "") : "http://127.0.0.1:11434"))
+    .pipe(z.string().url()),
+  /** Chat / instruct model tag pulled into Ollama (e.g. qwen2.5:7b, llama3.1:8b). */
+  OLLAMA_CHAT_MODEL: z.string().default("qwen2.5:7b"),
+  /** Embedding model tag (e.g. nomic-embed-text). */
+  OLLAMA_EMBED_MODEL: z.string().default("nomic-embed-text"),
+  /** Resume AI brain: ollama (default) or heuristic-only. */
+  RESUME_AI_PROVIDER: z
+    .string()
+    .optional()
+    .transform((v) => {
+      const n = (v ?? "ollama").trim().toLowerCase();
+      return n === "heuristic" ? "heuristic" : "ollama";
+    }),
+  /**
+   * When false (default): auto-apply extracted sections to the public profile after AI success.
+   * When true: keep draft review / confirm UI.
+   */
+  RESUME_REQUIRE_CONFIRMATION: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === "") return false;
+      return v === "true" || v === "1";
+    }),
   /** Optional Redis for BullMQ resume processing. Without it, jobs run in-process. */
   REDIS_URL: z
     .string()

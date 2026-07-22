@@ -97,7 +97,11 @@ export class UserConfirmationService {
     return { enhanced, decisions, flags };
   }
 
-  async confirm(studentId: string, resumeId: string): Promise<{ resumeId: string; embeddingStatus: string }> {
+  async confirm(
+    studentId: string,
+    resumeId: string,
+    options?: { autoApply?: boolean },
+  ): Promise<{ resumeId: string; embeddingStatus: string }> {
     const payload = await databaseManager.getDraftPayload(resumeId, studentId);
     if (!payload?.resume.is_draft) {
       throw new DraftNotReadyError("Draft not found");
@@ -119,7 +123,8 @@ export class UserConfirmationService {
     // Only block if certifications section is accepted and still incomplete
     const certDecision = decisions.certifications;
     const certAccepted = certDecision?.accepted !== false && certDecision?.deleted !== true;
-    if (certAccepted) {
+    // Auto-apply: skip cert blocking — incomplete certs still write what we have
+    if (certAccepted && !options?.autoApply) {
       const stillBlocking = blocking.filter((f) => f.section === "certifications");
       if (stillBlocking.length > 0) {
         throw new ConfirmBlockedError(stillBlocking);
@@ -139,18 +144,24 @@ export class UserConfirmationService {
 
       // Embeddings are optional — never block confirm
       await databaseManager.setStage(resumeId, studentId, "embedding", "embedding");
-      const embedding = await embeddingGenerator.generate(enhanced);
+      const embedding = await embeddingGenerator.generate(enhanced, {
+        studentId,
+        resumeId,
+      });
       await databaseManager.replaceEmbeddings({
         studentId,
         resumeId,
         chunks: embedding.chunks,
         status: embedding.status,
+        provider: embedding.provider,
+        model: embedding.model,
+        vectorRows: embedding.vectorRows,
       });
       await databaseManager.setStage(resumeId, studentId, "confirmed", "confirmed");
 
       await storageManager.deleteMany(previousFilePaths);
 
-      logger.info("Resume draft confirmed", {
+      logger.info(options?.autoApply ? "Resume draft auto-confirmed" : "Resume draft confirmed", {
         resumeId,
         studentId,
         embeddingStatus: embedding.status,
@@ -163,7 +174,6 @@ export class UserConfirmationService {
         studentId,
         message: err instanceof Error ? err.message : String(err),
       });
-      // Best-effort: if replace already committed, leave status failed for visibility
       await databaseManager
         .setStage(resumeId, studentId, "failed", "failed", err instanceof Error ? err.message : "Confirm failed")
         .catch(() => undefined);
