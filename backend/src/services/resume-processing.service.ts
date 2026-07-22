@@ -1,17 +1,19 @@
 import { query } from "../db/pool.js";
 import { logger } from "../config/logger.js";
 import { downloadFile } from "../services/storage.js";
-import { extractText } from "../services/pdf-extraction.service.js";
+import { extractResumeText } from "../services/resume-text-extraction.service.js";
 import { parseSkillsFromText } from "../services/skill-parser.service.js";
 
 export interface ResumeProcessingJobData {
   resumeId: string;
   studentId: string;
   filePath: string;
+  /** Original upload name — used when storage path extension is ambiguous. */
+  fileName?: string;
 }
 
 export async function processResumeJob(data: ResumeProcessingJobData): Promise<void> {
-  const { resumeId, studentId, filePath } = data;
+  const { resumeId, studentId, filePath, fileName } = data;
   logger.info("Resume processing started", { resumeId, studentId });
 
   await query(
@@ -23,7 +25,7 @@ export async function processResumeJob(data: ResumeProcessingJobData): Promise<v
 
   try {
     const buffer = await downloadFile(filePath);
-    const rawText = await extractText(buffer);
+    const rawText = await extractResumeText(buffer, fileName ?? filePath);
     const parsed = parseSkillsFromText(rawText);
 
     await query(

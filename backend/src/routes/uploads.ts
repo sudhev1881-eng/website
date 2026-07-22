@@ -2,8 +2,15 @@ import { Router } from "express";
 import { query } from "../db/pool.js";
 import { requireAuth, requireStudent, type AuthRequest } from "../middleware/supabase-auth.js";
 import { resumeUpload, imageUpload, verifyFileSignature } from "../middleware/upload.js";
+import { enqueueResumeProcessing } from "../queues/resume-processing.queue.js";
+import {
+  isExtractableResumeName,
+  isLegacyDocName,
+} from "../services/resume-text-extraction.service.js";
+import { LEGACY_DOC_MESSAGE } from "../services/docx-extraction.service.js";
 import {
   deleteFile,
+  resolvePublicFileUrl,
   saveFile,
 } from "../services/storage.js";
 
@@ -81,15 +88,46 @@ uploadsRouter.post(
       );
       const nextVersion = (versionResult.rows[0]?.max ?? 0) + 1;
 
+      const extractable = isExtractableResumeName(file.originalname);
+      const legacyDoc = isLegacyDocName(file.originalname);
+      const processingStatus = extractable ? "pending" : "skipped";
+      const errorMessage = legacyDoc
+        ? LEGACY_DOC_MESSAGE
+        : extractable
+          ? null
+          : "Skill extraction supports PDF and DOCX only";
+
       await query(`UPDATE resumes SET is_active = FALSE WHERE student_id = $1`, [studentId]);
 
       const result = await query(
-        `INSERT INTO resumes (student_id, file_name, file_size_bytes, file_path, version, is_active)
-         VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING *`,
-        [studentId, file.originalname, saved.sizeBytes, saved.relativePath, nextVersion],
+        `INSERT INTO resumes (
+           student_id, file_name, file_size_bytes, file_path, version, is_active,
+           processing_status, error_message, processed_at
+         )
+         VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7, $8) RETURNING *`,
+        [
+          studentId,
+          file.originalname,
+          saved.sizeBytes,
+          saved.relativePath,
+          nextVersion,
+          processingStatus,
+          errorMessage,
+          extractable ? null : new Date(),
+        ],
       );
 
       const row = result.rows[0];
+
+      if (extractable) {
+        await enqueueResumeProcessing({
+          resumeId: row.id,
+          studentId,
+          filePath: saved.relativePath,
+          fileName: file.originalname,
+        });
+      }
+
       const kb = row.file_size_bytes / 1024;
 
       res.status(201).json({
@@ -98,7 +136,9 @@ uploadsRouter.post(
         fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
         uploadedAt: row.uploaded_at.toISOString().split("T")[0],
         version: row.version,
-        downloadUrl: `/api/uploads/${saved.relativePath}`,
+        downloadUrl: resolvePublicFileUrl(saved.relativePath),
+        processingStatus: row.processing_status,
+        errorMessage: row.error_message ?? null,
       });
     } catch (err) {
       console.error("POST /students/me/resume error:", err);
@@ -117,8 +157,10 @@ uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRe
     }
 
     const result = await query(
-      `SELECT id, file_name, file_size_bytes, file_path, version, is_active, uploaded_at
-       FROM resumes WHERE student_id = $1 ORDER BY version DESC`,
+      `SELECT r.id, r.file_name, r.file_size_bytes, r.file_path, r.version, r.is_active,
+              r.uploaded_at, r.processing_status, r.error_message, r.processed_at,
+              (SELECT COUNT(*)::int FROM skills s WHERE s.student_id = r.student_id) AS skills_count
+       FROM resumes r WHERE r.student_id = $1 ORDER BY r.version DESC`,
       [studentId],
     );
 
@@ -129,13 +171,98 @@ uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRe
         version: r.version,
         active: r.is_active,
         uploadedAt: r.uploaded_at.toISOString().split("T")[0],
-        downloadUrl: r.file_path ? `/api/uploads/${r.file_path}` : null,
+        downloadUrl: resolvePublicFileUrl(r.file_path),
+        processingStatus: r.processing_status,
+        errorMessage: r.error_message ?? null,
+        processedAt: r.processed_at ? new Date(r.processed_at).toISOString() : null,
+        skillsCount: r.skills_count ?? 0,
       })),
     );
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch resume history" });
   }
 });
+
+/** GET /api/students/me/resumes/:id — processing status + extracted skills */
+uploadsRouter.get(
+  "/me/resumes/:id",
+  requireAuth,
+  requireStudent,
+  async (req: AuthRequest, res) => {
+    try {
+      const studentId = await getStudentId(req);
+      if (!studentId) {
+        res.status(404).json({ error: "Student profile not found" });
+        return;
+      }
+
+      const resume = await query<{
+        id: string;
+        file_name: string;
+        file_size_bytes: number;
+        file_path: string | null;
+        version: number;
+        is_active: boolean;
+        uploaded_at: Date;
+        processing_status: string;
+        error_message: string | null;
+        processed_at: Date | null;
+      }>(
+        `SELECT id, file_name, file_size_bytes, file_path, version, is_active,
+                uploaded_at, processing_status, error_message, processed_at
+         FROM resumes WHERE id = $1 AND student_id = $2`,
+        [req.params.id, studentId],
+      );
+
+      const row = resume.rows[0];
+      if (!row) {
+        res.status(404).json({ error: "Resume not found" });
+        return;
+      }
+
+      const [extracted, skills] = await Promise.all([
+        query<{
+          raw_text: string;
+          structured_data: { skills?: Array<{ name: string; category: string; confidence: number }> };
+          extraction_confidence: number | null;
+        }>(
+          `SELECT raw_text, structured_data, extraction_confidence
+           FROM extracted_resume_content WHERE resume_id = $1`,
+          [row.id],
+        ),
+        query<{ name: string; level: number; category: string }>(
+          `SELECT name, level, category FROM skills WHERE student_id = $1 ORDER BY sort_order`,
+          [studentId],
+        ),
+      ]);
+
+      const ext = extracted.rows[0];
+      const structuredSkills = ext?.structured_data?.skills ?? [];
+      const kb = row.file_size_bytes / 1024;
+
+      res.json({
+        id: row.id,
+        fileName: row.file_name,
+        fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
+        version: row.version,
+        active: row.is_active,
+        uploadedAt: row.uploaded_at.toISOString().split("T")[0],
+        downloadUrl: resolvePublicFileUrl(row.file_path),
+        processingStatus: row.processing_status,
+        errorMessage: row.error_message,
+        processedAt: row.processed_at ? new Date(row.processed_at).toISOString() : null,
+        extractionConfidence: ext?.extraction_confidence ?? null,
+        extractedSkills: structuredSkills,
+        skills: skills.rows,
+        skillsCount: skills.rows.length,
+        hasExtractedText: Boolean(ext?.raw_text?.trim()),
+      });
+    } catch (err) {
+      console.error("GET /students/me/resumes/:id error:", err);
+      res.status(500).json({ error: "Failed to fetch resume status" });
+    }
+  },
+);
 
 /** POST /api/students/me/avatar */
 uploadsRouter.post(

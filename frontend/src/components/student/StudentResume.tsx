@@ -43,7 +43,7 @@ function processingLabel(status: string | undefined): string {
     case "failed":
       return "Extraction failed";
     case "skipped":
-      return "PDF only";
+      return "Saved only";
     default:
       return "Not processed";
   }
@@ -94,7 +94,10 @@ export function StudentResume() {
       await refresh();
       loadHistory();
       if (uploaded.processingStatus === "skipped") {
-        toast.success("Resume uploaded (skill extraction supports PDF only)");
+        toast.success(
+          uploaded.errorMessage ??
+            "Resume uploaded (legacy .doc is saved only — use PDF or DOCX for skill extraction)",
+        );
       } else if (uploaded.processingStatus === "pending") {
         toast.success("Resume uploaded — extracting skills…");
       } else {
@@ -137,7 +140,7 @@ export function StudentResume() {
               <Upload
                 label="Upload resume"
                 accept=".pdf,.doc,.docx"
-                helperText="PDF recommended for free skill extraction · max 10MB"
+                helperText="PDF or DOCX for skill extraction · legacy .doc saved only · max 10MB"
                 onUpload={handleUpload}
               />
             )}
@@ -224,7 +227,7 @@ export function StudentResume() {
               <Upload
                 label="Upload resume"
                 accept=".pdf,.doc,.docx"
-                helperText="PDF recommended for free skill extraction · max 10MB"
+                helperText="PDF or DOCX for skill extraction · legacy .doc saved only · max 10MB"
                 onUpload={handleUpload}
               />
             )}
@@ -242,7 +245,7 @@ export function StudentResume() {
             {isProcessing ? (
               <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
                 <Spinner />
-                Parsing your PDF and matching skills…
+                Parsing your resume and matching skills…
               </div>
             ) : extractedSkills.length > 0 || profileSkills.length > 0 ? (
               <div className="flex flex-wrap gap-2">
@@ -257,8 +260,8 @@ export function StudentResume() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Upload a PDF resume to automatically detect skills. DOC/DOCX uploads are saved but
-                not parsed.
+                Upload a PDF or DOCX resume to automatically detect skills. Legacy .doc files are
+                saved but not parsed.
               </p>
             )}
           </CardContent>
