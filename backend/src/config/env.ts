@@ -85,8 +85,18 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z
     .string()
     .optional()
-    .transform((v) => (v && v.trim() ? v.trim().replace(/\/$/, "") : "http://127.0.0.1:11434"))
-    .pipe(z.string().url()),
+    .transform((v) => {
+      const fallback = "http://127.0.0.1:11434";
+      if (!v?.trim()) return fallback;
+      const trimmed = v.trim().replace(/\/$/, "");
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return fallback;
+        return trimmed;
+      } catch {
+        return fallback;
+      }
+    }),
   /** Chat / instruct model tag pulled into Ollama (e.g. qwen2.5:7b, llama3.1:8b). */
   OLLAMA_CHAT_MODEL: z.string().default("qwen2.5:7b"),
   /** Embedding model tag (e.g. nomic-embed-text). */
