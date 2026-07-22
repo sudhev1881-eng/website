@@ -9,6 +9,7 @@ import {
   buildPublicProfileFallbackFromResume,
   mapPublicLinks,
 } from "./profile-builder.js";
+import { coerceToIntelligentResumeData } from "./schema-mapper.js";
 import { EmbeddingGenerator } from "./embedding-generator.js";
 import { emptyIntelligentResumeData, type IntelligentResumeData } from "./types.js";
 
@@ -312,6 +313,53 @@ describe("planAcceptedProfile / ProfileBuilder", () => {
     assert.equal(fb.experience[0].role, "SWE");
     assert.equal(fb.university, "MIT");
     assert.ok(fb.skills.length >= 1);
+  });
+
+  it("tolerates legacy structured_data (skills as array) and missing bullets", () => {
+    const legacy = coerceToIntelligentResumeData({
+      contact: {
+        emails: [],
+        phones: [],
+        linkedin: null,
+        github: null,
+        website: null,
+        address: null,
+        name: "Sudhev",
+      },
+      summary: "About me",
+      experience: [
+        {
+          title: "Intern",
+          company: "Acme",
+          location: null,
+          startDate: "2024",
+          endDate: null,
+          bullets: null,
+          raw: "Intern at Acme",
+        },
+      ],
+      education: [],
+      skills: [
+        { name: "TypeScript", category: "Frontend", frequency: 2 },
+        { name: "Node.js", category: "Backend", frequency: 1 },
+      ],
+      certifications: [],
+      projects: [],
+      languages: ["English"],
+      sections: {},
+      confidence: { overall: 0.5, contact: 0.5, experience: 0.5, education: 0.5, skills: 0.5 },
+      parser: "heuristic",
+    });
+    assert.ok(legacy);
+    const fb = buildPublicProfileFallbackFromResume({
+      enhanced: legacy!,
+      decisions: {},
+      defaultAcceptMissing: true,
+    });
+    assert.equal(fb.bio, "About me");
+    assert.equal(fb.experience.length, 1);
+    assert.equal(fb.experience[0].description, "Intern at Acme");
+    assert.equal(fb.skills.length, 2);
   });
 });
 

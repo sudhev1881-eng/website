@@ -85,26 +85,31 @@ function skillLevel(confidence?: number, frequency?: number): number {
 }
 
 export function mapExperienceRows(
-  experience: IntelligentResumeData["experience"],
+  experience: IntelligentResumeData["experience"] | null | undefined,
   decision?: { acceptedIndexes?: number[] | "all" },
 ): ProfileExperienceRow[] {
-  return selectedIndexes(experience.length, decision)
-    .map((i) => experience[i])
+  const list = Array.isArray(experience) ? experience : [];
+  return selectedIndexes(list.length, decision)
+    .map((i) => list[i])
     .filter(Boolean)
     .map((exp) => ({
       role: (exp.title || "Role").slice(0, 255),
       company: (exp.company || "Company").slice(0, 255),
       period: [exp.startDate, exp.endDate].filter(Boolean).join(" – ").slice(0, 100) || "N/A",
-      description: (exp.bullets.join("\n") || exp.raw || "").slice(0, 5000),
+      description: ((Array.isArray(exp.bullets) ? exp.bullets.join("\n") : "") || exp.raw || "").slice(
+        0,
+        5000,
+      ),
     }));
 }
 
 export function mapProjectRows(
-  projects: IntelligentResumeData["projects"],
+  projects: IntelligentResumeData["projects"] | null | undefined,
   decision?: { acceptedIndexes?: number[] | "all" },
 ): ProfileProjectRow[] {
-  return selectedIndexes(projects.length, decision)
-    .map((i) => projects[i])
+  const list = Array.isArray(projects) ? projects : [];
+  return selectedIndexes(list.length, decision)
+    .map((i) => list[i])
     .filter((p) => p && (p.name?.trim() || p.description?.trim()))
     .map((p) => ({
       title: (p.name || "Project").slice(0, 255),
@@ -116,14 +121,21 @@ export function mapProjectRows(
 }
 
 export function mapSkillRows(
-  skills: IntelligentResumeData["skills"],
+  skills: IntelligentResumeData["skills"] | Array<{ name: string; category?: string; confidence?: number; frequency?: number }> | null | undefined,
 ): ProfileSkillRow[] {
-  const list =
-    skills.all.length > 0 ? skills.all : [...skills.technical, ...skills.soft];
+  let list: Array<{ name: string; category?: string; confidence?: number; frequency?: number }> = [];
+  if (Array.isArray(skills)) {
+    list = skills;
+  } else if (skills && typeof skills === "object") {
+    const all = Array.isArray(skills.all) ? skills.all : [];
+    const technical = Array.isArray(skills.technical) ? skills.technical : [];
+    const soft = Array.isArray(skills.soft) ? skills.soft : [];
+    list = all.length > 0 ? all : [...technical, ...soft];
+  }
   const seen = new Set<string>();
   const rows: ProfileSkillRow[] = [];
   for (const skill of list) {
-    const key = skill.name.trim().toLowerCase();
+    const key = skill.name?.trim().toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     rows.push({
@@ -136,11 +148,12 @@ export function mapSkillRows(
 }
 
 export function mapCertificateRows(
-  certifications: IntelligentResumeData["certifications"],
+  certifications: IntelligentResumeData["certifications"] | null | undefined,
   decision?: { acceptedIndexes?: number[] | "all" },
 ): ProfileCertificateRow[] {
-  return selectedIndexes(certifications.length, decision)
-    .map((i) => certifications[i])
+  const list = Array.isArray(certifications) ? certifications : [];
+  return selectedIndexes(list.length, decision)
+    .map((i) => list[i])
     .filter((c) => c && c.name && c.issuer && c.issueDate)
     .map((c) => ({
       name: c.name.slice(0, 255),
@@ -151,9 +164,10 @@ export function mapCertificateRows(
 }
 
 export function mapEducationHint(
-  education: IntelligentResumeData["education"],
+  education: IntelligentResumeData["education"] | null | undefined,
 ): ProfileEducationHint | null {
-  const first = education.find((e) => e.school?.trim() || e.degree?.trim() || e.field?.trim());
+  const list = Array.isArray(education) ? education : [];
+  const first = list.find((e) => e.school?.trim() || e.degree?.trim() || e.field?.trim());
   if (!first) return null;
   const majorParts = [first.degree, first.field].filter(Boolean);
   return {
@@ -165,10 +179,10 @@ export function mapEducationHint(
 /** Professional links only — never email or phone from resume contact. */
 export function mapPublicLinks(data: IntelligentResumeData): ProfilePublicLinks {
   return {
-    linkedin: data.linkedin?.trim() || data.contact.linkedin?.trim() || null,
-    github: data.github?.trim() || data.contact.github?.trim() || null,
-    portfolio: data.portfolio?.trim() || data.contact.website?.trim() || null,
-    location: data.contact.address?.trim() || null,
+    linkedin: data.linkedin?.trim() || data.contact?.linkedin?.trim() || null,
+    github: data.github?.trim() || data.contact?.github?.trim() || null,
+    portfolio: data.portfolio?.trim() || data.contact?.website?.trim() || null,
+    location: data.contact?.address?.trim() || null,
   };
 }
 
@@ -185,9 +199,10 @@ export function planAcceptedProfile(
   const applyCertificates = isSectionAccepted(decisions, "certifications");
   const applyBio = isSectionAccepted(decisions, "summary") && Boolean(data.summary?.trim());
   const applyTitle =
-    isSectionAccepted(decisions, "personal") && Boolean(data.personal.title?.trim());
+    isSectionAccepted(decisions, "personal") && Boolean(data.personal?.title?.trim());
+  const educationList = Array.isArray(data.education) ? data.education : [];
   const applyEducation =
-    isSectionAccepted(decisions, "education") && data.education.length > 0;
+    isSectionAccepted(decisions, "education") && educationList.length > 0;
   const applyLinks =
     isSectionAccepted(decisions, "contact") ||
     isSectionAccepted(decisions, "portfolio") ||
@@ -196,8 +211,8 @@ export function planAcceptedProfile(
 
   return {
     bio: applyBio ? data.summary!.trim().slice(0, 2000) : null,
-    title: applyTitle ? data.personal.title!.trim().slice(0, 255) : null,
-    education: applyEducation ? mapEducationHint(data.education) : null,
+    title: applyTitle ? data.personal!.title!.trim().slice(0, 255) : null,
+    education: applyEducation ? mapEducationHint(educationList) : null,
     experience: applyExperience ? mapExperienceRows(data.experience, decisions.experience) : [],
     projects: applyProjects ? mapProjectRows(data.projects, decisions.projects) : [],
     skills: applySkills ? mapSkillRows(data.skills) : [],

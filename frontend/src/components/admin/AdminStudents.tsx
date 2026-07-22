@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/components/ui/toast";
 import { NFCWriterModal } from "@/components/nfc/NFCWriterModal";
-import { SetupError, DB_SETUP_STEPS } from "@/components/layout/SetupError";
+import { SetupError, LoadError, DB_SETUP_STEPS, shouldShowLocalDbSetup } from "@/components/layout/SetupError";
 import { UniversitySelect } from "@/components/ui/university-select";
 import { api, ApiError, type AdminStudent } from "@/lib/api";
 
@@ -33,7 +33,9 @@ const statusVariant: Record<string, "success" | "warning" | "outline" | "primary
 export function AdminStudents() {
   const [students, setStudents] = React.useState<AdminStudent[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [fetchError, setFetchError] = React.useState<string | null>(null);
+  const [fetchError, setFetchError] = React.useState<{ message: string; status: number | null } | null>(
+    null,
+  );
   const [search, setSearch] = React.useState("");
   const [writeNfcStudent, setWriteNfcStudent] = React.useState<AdminStudent | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
@@ -54,7 +56,16 @@ export function AdminStudents() {
       .students()
       .then(setStudents)
       .catch((err) => {
-        setFetchError(err instanceof ApiError ? err.message : "Failed to load students");
+        if (err instanceof ApiError) {
+          setFetchError({ message: err.message, status: err.status });
+        } else if (err instanceof TypeError) {
+          setFetchError({ message: err.message || "Failed to reach API", status: null });
+        } else {
+          setFetchError({
+            message: err instanceof Error ? err.message : "Failed to load students",
+            status: null,
+          });
+        }
       })
       .finally(() => setLoading(false));
   }, []);
@@ -212,8 +223,15 @@ export function AdminStudents() {
   if (fetchError) {
     return (
       <div className="py-8">
-        <SetupError title="Could not load students" steps={DB_SETUP_STEPS} />
-        <p className="mt-4 text-center text-sm text-error">{fetchError}</p>
+        {shouldShowLocalDbSetup(fetchError.status) ? (
+          <SetupError title="Could not load students" steps={DB_SETUP_STEPS} />
+        ) : (
+          <LoadError
+            title="Could not load students"
+            message="Something went wrong talking to the API. Please try again."
+            detail={fetchError.message}
+          />
+        )}
       </div>
     );
   }

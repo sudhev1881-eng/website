@@ -3,7 +3,8 @@ import { query } from "../db/pool.js";
 import { logProfileEvent } from "../services/analytics.js";
 import { resolvePublicFileUrl } from "../services/storage.js";
 import { buildPublicProfileFallbackFromResume } from "../services/resume/profile-builder.js";
-import type { IntelligentResumeData, SectionDecisions } from "../services/resume/types.js";
+import { coerceToIntelligentResumeData } from "../services/resume/schema-mapper.js";
+import type { SectionDecisions } from "../services/resume/types.js";
 
 export const profilesRouter = Router();
 
@@ -178,8 +179,8 @@ profilesRouter.get("/:slug", async (req, res) => {
           file_path: string | null;
           version: number;
           uploaded_at: Date;
-          enhanced_data: IntelligentResumeData | null;
-          structured_data: IntelligentResumeData | null;
+          enhanced_data: unknown;
+          structured_data: unknown;
           section_decisions: SectionDecisions | null;
           processing_status?: string;
         }
@@ -199,39 +200,43 @@ profilesRouter.get("/:slug", async (req, res) => {
         empty(portfolio));
 
     const enhanced =
-      resumeRow?.enhanced_data ??
-      (resumeRow?.structured_data as IntelligentResumeData | null) ??
-      null;
+      coerceToIntelligentResumeData(resumeRow?.enhanced_data) ??
+      coerceToIntelligentResumeData(resumeRow?.structured_data);
 
     if (needsFallback && enhanced) {
-      const fb = buildPublicProfileFallbackFromResume({
-        enhanced,
-        decisions: resumeRow.section_decisions ?? {},
-        defaultAcceptMissing: true,
-      });
+      try {
+        const fb = buildPublicProfileFallbackFromResume({
+          enhanced,
+          decisions: resumeRow.section_decisions ?? {},
+          defaultAcceptMissing: true,
+        });
 
-      if (empty(bio) && fb.bio) bio = fb.bio;
-      if (empty(university) && fb.university) university = fb.university;
-      if (empty(major) && fb.major) major = fb.major;
-      if ((empty(title) || title === "Student") && fb.title) title = fb.title;
-      if (empty(github) && fb.github) github = fb.github;
-      if (empty(linkedin) && fb.linkedin) linkedin = fb.linkedin;
-      if (empty(portfolio) && fb.portfolio) portfolio = fb.portfolio;
+        if (empty(bio) && fb.bio) bio = fb.bio;
+        if (empty(university) && fb.university) university = fb.university;
+        if (empty(major) && fb.major) major = fb.major;
+        if ((empty(title) || title === "Student") && fb.title) title = fb.title;
+        if (empty(github) && fb.github) github = fb.github;
+        if (empty(linkedin) && fb.linkedin) linkedin = fb.linkedin;
+        if (empty(portfolio) && fb.portfolio) portfolio = fb.portfolio;
 
-      if (experienceRows.length === 0 && fb.experience.length > 0) {
-        experienceRows = fb.experience;
-      }
-      if (projectRows.length === 0 && fb.projects.length > 0) {
-        projectRows = fb.projects.map((p) => ({
-          ...p,
-          image: null as string | null,
-        }));
-      }
-      if (skillRows.length === 0 && fb.skills.length > 0) {
-        skillRows = fb.skills;
-      }
-      if (certificateRows.length === 0 && fb.certificates.length > 0) {
-        certificateRows = fb.certificates;
+        if (experienceRows.length === 0 && fb.experience.length > 0) {
+          experienceRows = fb.experience;
+        }
+        if (projectRows.length === 0 && fb.projects.length > 0) {
+          projectRows = fb.projects.map((p) => ({
+            ...p,
+            image: null as string | null,
+          }));
+        }
+        if (skillRows.length === 0 && fb.skills.length > 0) {
+          skillRows = fb.skills;
+        }
+        if (certificateRows.length === 0 && fb.certificates.length > 0) {
+          certificateRows = fb.certificates;
+        }
+      } catch (fallbackErr) {
+        // Never fail the public profile because resume-shaped fallback data is incomplete
+        console.error("GET /profiles/:slug resume fallback skipped:", fallbackErr);
       }
     }
 

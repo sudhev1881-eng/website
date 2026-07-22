@@ -117,6 +117,73 @@ export function toIntelligentResumeData(
   };
 }
 
+function isIntelligentSkillsShape(skills: unknown): skills is IntelligentResumeData["skills"] {
+  return (
+    !!skills &&
+    typeof skills === "object" &&
+    !Array.isArray(skills) &&
+    ("all" in skills || "technical" in skills || "soft" in skills)
+  );
+}
+
+/**
+ * Accept either intelligent schema or legacy StructuredResumeData (skills as array).
+ * Returns null when the payload cannot be safely coerced.
+ */
+export function coerceToIntelligentResumeData(raw: unknown): IntelligentResumeData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+
+  if (isIntelligentSkillsShape(obj.skills) || obj.personal || obj.skillsDetail) {
+    const base = emptyIntelligentResumeData();
+    const skills = isIntelligentSkillsShape(obj.skills)
+      ? obj.skills
+      : isIntelligentSkillsShape(obj.skillsDetail)
+        ? (obj.skillsDetail as IntelligentResumeData["skills"])
+        : base.skills;
+    const technical = Array.isArray(skills.technical) ? skills.technical : [];
+    const soft = Array.isArray(skills.soft) ? skills.soft : [];
+    const all = Array.isArray(skills.all) ? skills.all : [...technical, ...soft];
+    const contact = {
+      ...base.contact,
+      ...((obj.contact as IntelligentResumeData["contact"] | undefined) ?? {}),
+    };
+    const personal = {
+      ...base.personal,
+      ...((obj.personal as IntelligentResumeData["personal"] | undefined) ?? {}),
+    };
+
+    const languages = Array.isArray(obj.languages)
+      ? (obj.languages as Array<string | { name: string; proficiency: string | null }>).map((l) =>
+          typeof l === "string" ? { name: l, proficiency: null as string | null } : l,
+        )
+      : [];
+
+    return {
+      ...base,
+      ...(obj as Partial<IntelligentResumeData>),
+      personal,
+      contact,
+      summary: typeof obj.summary === "string" ? obj.summary : (obj.summary as string | null) ?? null,
+      experience: Array.isArray(obj.experience) ? (obj.experience as IntelligentResumeData["experience"]) : [],
+      education: Array.isArray(obj.education) ? (obj.education as IntelligentResumeData["education"]) : [],
+      projects: Array.isArray(obj.projects) ? (obj.projects as IntelligentResumeData["projects"]) : [],
+      skills: { technical, soft, all },
+      certifications: Array.isArray(obj.certifications)
+        ? (obj.certifications as IntelligentResumeData["certifications"])
+        : [],
+      languages,
+    };
+  }
+
+  // Legacy heuristic shape: skills is a flat array
+  try {
+    return toIntelligentResumeData(raw as StructuredResumeData);
+  } catch {
+    return null;
+  }
+}
+
 /** Flatten intelligent data back toward legacy UI shape for API responses. */
 export function toLegacyStructuredView(data: IntelligentResumeData): Record<string, unknown> {
   return {
