@@ -57,6 +57,7 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
     await databaseManager.setStage(resumeId, studentId, "validating", "validating");
     const flags = validationEngine.validate(enhancement.data, {
       rawTextLength: parsed.rawText.trim().length,
+      aiSkippedReason: enhancement.skippedReason,
     });
 
     await databaseManager.saveDraftExtraction({

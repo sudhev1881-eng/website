@@ -7,7 +7,11 @@ import type { IntelligentResumeData, ValidationFlag } from "./types.js";
 export class ValidationEngine {
   validate(
     data: IntelligentResumeData,
-    options?: { rawTextLength?: number },
+    options?: {
+      rawTextLength?: number;
+      /** When AI/Ollama enrichment was skipped or failed — mild draft note only. */
+      aiSkippedReason?: "unavailable" | "empty" | "llm_failed" | "heuristic_only";
+    },
   ): ValidationFlag[] {
     const flags: ValidationFlag[] = [];
 
@@ -19,6 +23,19 @@ export class ValidationEngine {
         message:
           "Little text could be read from this file. Prefer a text PDF or DOCX; scanned PDFs may need a clearer scan.",
         severity: "warning",
+        needsUserInput: false,
+      });
+    }
+
+    if (
+      options?.aiSkippedReason === "unavailable" ||
+      options?.aiSkippedReason === "llm_failed"
+    ) {
+      flags.push({
+        code: "ai_fallback",
+        section: "summary",
+        message: "Using built-in parsing",
+        severity: "info",
         needsUserInput: false,
       });
     }

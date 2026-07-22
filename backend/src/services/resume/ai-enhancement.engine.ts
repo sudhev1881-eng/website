@@ -28,7 +28,8 @@ const MAX_CHARS = 14_000;
 /**
  * AiEnhancementEngine — Ollama (via AI factory) polish + extract enrichment.
  * NEVER invents employers, dates, credentials, or skills not in source.
- * Falls back to heuristic data when Ollama is down or RESUME_AI_PROVIDER=heuristic.
+ * Falls back to heuristic (built-in) parsing when Ollama is down, extract fails,
+ * returns empty/bad JSON, or enrichment is weaker than the rule-based parse.
  */
 export class AiEnhancementEngine {
   constructor(private readonly optimizer = new SectionOptimizer()) {}
@@ -60,9 +61,22 @@ export class AiEnhancementEngine {
     }
 
     try {
-      const enriched = await this.runOllamaIntelligence(bundle.llm, optimized, cleaned);
+      const run = await this.runOllamaIntelligence(bundle.llm, optimized, cleaned);
+      if (!run.contributed || isWeakerThanHeuristic(run.data, optimized)) {
+        logger.warn("Ollama produced no usable enrichment; using built-in parsing", {
+          extractOk: run.extractOk,
+          contributed: run.contributed,
+          weaker: isWeakerThanHeuristic(run.data, optimized),
+        });
+        return {
+          data: { ...optimized, parser: "heuristic", aiProvider: "heuristic" },
+          enhanced: false,
+          provider: "heuristic",
+          skippedReason: "llm_failed",
+        };
+      }
       return {
-        data: enriched,
+        data: run.data,
         enhanced: true,
         provider: "ollama",
       };
@@ -83,9 +97,12 @@ export class AiEnhancementEngine {
     llm: LLMProvider,
     source: IntelligentResumeData,
     cleanedText: string,
-  ): Promise<IntelligentResumeData> {
-    // 1) Structured extract (merge onto heuristic — never wipe with hollow LLM)
+  ): Promise<{ data: IntelligentResumeData; contributed: boolean; extractOk: boolean }> {
     let merged = source;
+    let extractOk = false;
+    let contributed = false;
+
+    // 1) Structured extract (merge onto heuristic — never wipe with hollow LLM)
     try {
       const extract = await llm.chat(buildResumeExtractMessages(cleanedText), {
         json: true,
@@ -93,8 +110,18 @@ export class AiEnhancementEngine {
         timeoutMs: 90_000,
       });
       const parsed = safeParseJson(extract.content);
-      if (parsed) {
-        merged = mergeExtractOntoHeuristic(source, parsed);
+      if (parsed && llmExtractHasSignal(parsed)) {
+        const next = mergeExtractOntoHeuristic(source, parsed);
+        extractOk = true;
+        if (resumeContentScore(next) >= resumeContentScore(source)) {
+          merged = next;
+          contributed = true;
+        } else {
+          // Bad/sparse extract — keep heuristic base, do not treat as success
+          logger.warn("Ollama extract was weaker than heuristic; keeping built-in parse");
+        }
+      } else if (parsed) {
+        logger.warn("Ollama extract returned empty/hollow JSON; keeping heuristic base");
       }
     } catch (err) {
       logger.warn("Ollama extract step failed; continuing with heuristic base", {
@@ -104,6 +131,7 @@ export class AiEnhancementEngine {
 
     // 2) Skill inference from projects/experience
     try {
+      const beforeSkills = merged.skills.all.length;
       const skillRes = await llm.chat(
         buildSkillInferMessages(
           {
@@ -124,6 +152,7 @@ export class AiEnhancementEngine {
       } | null;
       if (skillJson) {
         merged = mergeInferredSkills(merged, skillJson);
+        if (merged.skills.all.length > beforeSkills) contributed = true;
       }
     } catch (err) {
       logger.warn("Ollama skill-infer step failed", {
@@ -150,14 +179,16 @@ export class AiEnhancementEngine {
         classifications?: string[];
       } | null;
       if (classJson) {
-        merged = {
-          ...merged,
-          domains: uniqueStrings(classJson.domains ?? merged.domains).slice(0, 8),
-          classifications: uniqueStrings(classJson.classifications ?? merged.classifications).slice(
-            0,
-            8,
-          ),
-        };
+        const domains = uniqueStrings(classJson.domains ?? []).slice(0, 8);
+        const classifications = uniqueStrings(classJson.classifications ?? []).slice(0, 8);
+        if (domains.length || classifications.length) {
+          merged = {
+            ...merged,
+            domains: domains.length ? domains : merged.domains,
+            classifications: classifications.length ? classifications : merged.classifications,
+          };
+          contributed = true;
+        }
       }
     } catch (err) {
       logger.warn("Ollama classify step failed", {
@@ -167,6 +198,7 @@ export class AiEnhancementEngine {
 
     // 4) Wording polish (no invent)
     try {
+      const before = resumeContentScore(merged);
       const polishRes = await llm.chat(
         buildResumeEnhanceMessages(
           {
@@ -189,7 +221,18 @@ export class AiEnhancementEngine {
       );
       const polished = safeParseJson(polishRes.content) as Partial<IntelligentResumeData> | null;
       if (polished) {
-        merged = mergeEnhancementNoInvent(merged, polished);
+        const next = mergeEnhancementNoInvent(merged, polished);
+        if (
+          next.summary !== merged.summary ||
+          next.objective !== merged.objective ||
+          JSON.stringify(next.experience) !== JSON.stringify(merged.experience) ||
+          JSON.stringify(next.projects) !== JSON.stringify(merged.projects)
+        ) {
+          merged = next;
+          contributed = true;
+        } else if (resumeContentScore(next) >= before) {
+          merged = next;
+        }
       }
     } catch (err) {
       logger.warn("Ollama enhance step failed", {
@@ -197,10 +240,22 @@ export class AiEnhancementEngine {
       });
     }
 
+    if (!contributed) {
+      return {
+        data: { ...source, parser: "heuristic", aiProvider: "heuristic" },
+        contributed: false,
+        extractOk,
+      };
+    }
+
     return {
-      ...merged,
-      parser: "ollama",
-      aiProvider: "ollama",
+      data: {
+        ...merged,
+        parser: extractOk ? "ollama" : "heuristic+llm",
+        aiProvider: "ollama",
+      },
+      contributed: true,
+      extractOk,
     };
   }
 }
@@ -237,6 +292,59 @@ function uniqueStrings(arr: string[]): string[] {
   return out;
 }
 
+/** True when LLM extract JSON has at least one useful field. */
+export function llmExtractHasSignal(llmRaw: unknown): boolean {
+  if (!llmRaw || typeof llmRaw !== "object") return false;
+  const obj = llmRaw as Record<string, unknown>;
+  if (typeof obj.summary === "string" && obj.summary.trim()) return true;
+  if (typeof obj.objective === "string" && obj.objective.trim()) return true;
+  if (Array.isArray(obj.experience) && obj.experience.length > 0) return true;
+  if (Array.isArray(obj.education) && obj.education.length > 0) return true;
+  if (Array.isArray(obj.projects) && obj.projects.length > 0) return true;
+  if (Array.isArray(obj.skills) && obj.skills.length > 0) return true;
+  if (obj.skills && typeof obj.skills === "object") {
+    const s = obj.skills as { all?: unknown[]; technical?: unknown[] };
+    if ((s.all?.length ?? 0) > 0 || (s.technical?.length ?? 0) > 0) return true;
+  }
+  const coerced = coerceToIntelligentResumeData(llmRaw);
+  if (!coerced) return false;
+  return resumeContentScore(coerced) > 0;
+}
+
+/** Rough richness score for comparing heuristic vs LLM structured output. */
+export function resumeContentScore(d: IntelligentResumeData): number {
+  const str = (v: string | null | undefined) => (v && v.trim() ? 1 : 0);
+  const len = <T>(arr: T[] | null | undefined) => (Array.isArray(arr) ? arr.length : 0);
+  const experience = Array.isArray(d.experience) ? d.experience : [];
+  const education = Array.isArray(d.education) ? d.education : [];
+  const projects = Array.isArray(d.projects) ? d.projects : [];
+  const skillsAll = Array.isArray(d.skills?.all) ? d.skills.all : [];
+  return (
+    str(d.summary) * 2 +
+    str(d.objective) +
+    str(d.personal?.name) +
+    len(d.contact?.emails) +
+    len(d.contact?.phones) +
+    experience.filter((e) => e.title || e.company || e.startDate).length * 3 +
+    education.filter((e) => e.school || e.degree || e.raw).length * 2 +
+    projects.filter((p) => p.name || p.description).length * 2 +
+    Math.min(skillsAll.length, 20) +
+    len(d.certifications) +
+    len(d.languages) +
+    len(d.achievements)
+  );
+}
+
+/** Prefer built-in parse when AI output is clearly thinner. */
+export function isWeakerThanHeuristic(
+  candidate: IntelligentResumeData,
+  heuristic: IntelligentResumeData,
+): boolean {
+  const h = resumeContentScore(heuristic);
+  if (h === 0) return false;
+  return resumeContentScore(candidate) < h * 0.75;
+}
+
 /** Merge Ollama extract onto heuristic without wiping richer heuristic sections. */
 export function mergeExtractOntoHeuristic(
   heuristic: IntelligentResumeData,
@@ -250,23 +358,32 @@ export function mergeExtractOntoHeuristic(
           .map((l) => ({ label: String(l.label ?? "Link"), url: String(l.url) })) as IntelligentResumeData["socialLinks"])
       : [];
 
-  const preferArr = <T>(a: T[], b: T[]): T[] => (a.length > 0 ? a : b);
+  /** Prefer LLM only when it has at least as many items as heuristic (avoids sparse overwrite). */
+  const preferRicherArr = <T>(llm: T[] | null | undefined, heur: T[] | null | undefined): T[] => {
+    const a = Array.isArray(llm) ? llm : [];
+    const b = Array.isArray(heur) ? heur : [];
+    if (!a.length) return b;
+    if (!b.length) return a;
+    return a.length >= b.length ? a : b;
+  };
   const preferStr = (a: string | null | undefined, b: string | null | undefined) =>
     a && a.trim() ? a : b ?? null;
 
-  const links = preferArr(
+  const links = preferRicherArr(
     social.length ? social : coerced.links,
-    heuristic.links.length ? heuristic.links : heuristic.socialLinks,
+    heuristic.links?.length ? heuristic.links : heuristic.socialLinks,
   );
 
-  const skillsTechnical = preferArr(coerced.skills.technical, heuristic.skills.technical);
-  const skillsSoft = preferArr(coerced.skills.soft, heuristic.skills.soft);
+  const skillsTechnical = preferRicherArr(coerced.skills?.technical, heuristic.skills?.technical);
+  const skillsSoft = preferRicherArr(coerced.skills?.soft, heuristic.skills?.soft);
+  const coercedAll = Array.isArray(coerced.skills?.all) ? coerced.skills.all : [];
+  const heuristicAll = Array.isArray(heuristic.skills?.all) ? heuristic.skills.all : [];
   const skillsAll =
-    coerced.skills.all.length > 0
-      ? coerced.skills.all
+    coercedAll.length >= heuristicAll.length && coercedAll.length > 0
+      ? coercedAll
       : [...skillsTechnical, ...skillsSoft].length
         ? [...skillsTechnical, ...skillsSoft]
-        : heuristic.skills.all;
+        : heuristicAll;
 
   return {
     ...heuristic,
@@ -276,35 +393,35 @@ export function mergeExtractOntoHeuristic(
     },
     contact: {
       ...heuristic.contact,
-      emails: preferArr(coerced.contact.emails, heuristic.contact.emails),
-      phones: preferArr(coerced.contact.phones, heuristic.contact.phones),
-      linkedin: preferStr(coerced.contact.linkedin, heuristic.contact.linkedin),
-      github: preferStr(coerced.contact.github, heuristic.contact.github),
-      website: preferStr(coerced.contact.website, heuristic.contact.website),
-      address: preferStr(coerced.contact.address, heuristic.contact.address),
-      name: preferStr(coerced.contact.name, heuristic.contact.name),
+      emails: preferRicherArr(coerced.contact?.emails, heuristic.contact?.emails),
+      phones: preferRicherArr(coerced.contact?.phones, heuristic.contact?.phones),
+      linkedin: preferStr(coerced.contact?.linkedin, heuristic.contact?.linkedin),
+      github: preferStr(coerced.contact?.github, heuristic.contact?.github),
+      website: preferStr(coerced.contact?.website, heuristic.contact?.website),
+      address: preferStr(coerced.contact?.address, heuristic.contact?.address),
+      name: preferStr(coerced.contact?.name, heuristic.contact?.name),
     },
     summary: preferStr(coerced.summary, heuristic.summary),
     objective: preferStr(coerced.objective, heuristic.objective),
-    education: preferArr(coerced.education, heuristic.education),
+    education: preferRicherArr(coerced.education, heuristic.education),
     experience: preferRicherExperience(coerced.experience, heuristic.experience),
-    projects: preferArr(coerced.projects, heuristic.projects),
+    projects: preferRicherArr(coerced.projects, heuristic.projects),
     skills: { technical: skillsTechnical, soft: skillsSoft, all: skillsAll },
-    languages: preferArr(coerced.languages, heuristic.languages),
-    certifications: preferArr(coerced.certifications, heuristic.certifications),
-    awards: preferArr(coerced.awards, heuristic.awards),
-    achievements: preferArr(coerced.achievements, heuristic.achievements),
-    volunteer: preferArr(coerced.volunteer, heuristic.volunteer),
-    leadership: preferArr(coerced.leadership, heuristic.leadership),
-    publications: preferArr(coerced.publications, heuristic.publications),
-    interests: preferArr(coerced.interests, heuristic.interests),
+    languages: preferRicherArr(coerced.languages, heuristic.languages),
+    certifications: preferRicherArr(coerced.certifications, heuristic.certifications),
+    awards: preferRicherArr(coerced.awards, heuristic.awards),
+    achievements: preferRicherArr(coerced.achievements, heuristic.achievements),
+    volunteer: preferRicherArr(coerced.volunteer, heuristic.volunteer),
+    leadership: preferRicherArr(coerced.leadership, heuristic.leadership),
+    publications: preferRicherArr(coerced.publications, heuristic.publications),
+    interests: preferRicherArr(coerced.interests, heuristic.interests),
     links,
     socialLinks: links,
-    domains: preferArr(coerced.domains, heuristic.domains),
-    classifications: preferArr(coerced.classifications, heuristic.classifications),
-    portfolio: preferStr(coerced.portfolio, heuristic.portfolio) ?? preferStr(coerced.contact.website, heuristic.portfolio),
-    github: preferStr(coerced.github, heuristic.github) ?? preferStr(coerced.contact.github, heuristic.github),
-    linkedin: preferStr(coerced.linkedin, heuristic.linkedin) ?? preferStr(coerced.contact.linkedin, heuristic.linkedin),
+    domains: preferRicherArr(coerced.domains, heuristic.domains),
+    classifications: preferRicherArr(coerced.classifications, heuristic.classifications),
+    portfolio: preferStr(coerced.portfolio, heuristic.portfolio) ?? preferStr(coerced.contact?.website, heuristic.portfolio),
+    github: preferStr(coerced.github, heuristic.github) ?? preferStr(coerced.contact?.github, heuristic.github),
+    linkedin: preferStr(coerced.linkedin, heuristic.linkedin) ?? preferStr(coerced.contact?.linkedin, heuristic.linkedin),
   };
 }
 
@@ -315,7 +432,10 @@ function preferRicherExperience(
   if (!Array.isArray(llm) || llm.length === 0) return heuristic;
   const substantive = (jobs: IntelligentResumeData["experience"]) =>
     jobs.filter((e) => e.title || e.company || e.startDate).length;
-  if (substantive(llm) === 0 && substantive(heuristic) > 0) return heuristic;
+  const llmN = substantive(llm);
+  const heurN = substantive(heuristic);
+  if (llmN === 0 && heurN > 0) return heuristic;
+  if (heurN > llmN) return heuristic;
   return llm;
 }
 

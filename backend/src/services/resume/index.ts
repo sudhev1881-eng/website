@@ -7,6 +7,9 @@ export {
   aiEnhancementEngine,
   mergeEnhancementNoInvent,
   mergeExtractOntoHeuristic,
+  llmExtractHasSignal,
+  resumeContentScore,
+  isWeakerThanHeuristic,
 } from "./ai-enhancement.engine.js";
 export { CertificationExtractor } from "./certification-extractor.js";
 export { SectionOptimizer } from "./section-optimizer.js";

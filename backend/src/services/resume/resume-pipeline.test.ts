@@ -1,7 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { ValidationEngine } from "./validation-engine.js";
-import { mergeEnhancementNoInvent } from "./ai-enhancement.engine.js";
+import {
+  mergeEnhancementNoInvent,
+  mergeExtractOntoHeuristic,
+  llmExtractHasSignal,
+  resumeContentScore,
+  isWeakerThanHeuristic,
+  AiEnhancementEngine,
+} from "./ai-enhancement.engine.js";
+import type { LLMProvider } from "../ai/index.js";
 import { applySectionAction } from "./user-confirmation.service.js";
 import { selectResumesToReplace } from "./database-manager.js";
 import {
@@ -78,6 +86,13 @@ describe("ValidationEngine", () => {
     assert.ok(flags.some((f) => f.code === "extraction_sparse"));
   });
 
+  it("adds mild ai_fallback note when Ollama enrichment was skipped", () => {
+    const flags = new ValidationEngine().validate(sampleData(), {
+      aiSkippedReason: "llm_failed",
+    });
+    assert.ok(flags.some((f) => f.code === "ai_fallback" && /built-in/i.test(f.message)));
+  });
+
   it("clears blocking flags when cert fields are filled", () => {
     const engine = new ValidationEngine();
     const data = sampleData({
@@ -129,6 +144,179 @@ describe("mergeEnhancementNoInvent", () => {
     } as Partial<IntelligentResumeData>;
     const merged = mergeEnhancementNoInvent(source, polished);
     assert.equal(merged.experience.length, 1);
+  });
+});
+
+describe("mergeExtractOntoHeuristic + quality helpers", () => {
+  it("keeps heuristic sections when LLM extract is empty", () => {
+    const heuristic = sampleData();
+    const merged = mergeExtractOntoHeuristic(heuristic, {});
+    assert.equal(merged.experience.length, 1);
+    assert.equal(merged.experience[0].company, "Acme");
+    assert.equal(merged.education[0].school, "MIT");
+    assert.equal(merged.skills.all[0].name, "TypeScript");
+  });
+
+  it("does not let a sparse LLM education list wipe richer heuristic education", () => {
+    const heuristic = sampleData({
+      education: [
+        {
+          school: "MIT",
+          degree: "BS",
+          field: "CS",
+          startDate: null,
+          endDate: "2019",
+          gpa: null,
+          raw: "MIT",
+        },
+        {
+          school: "Stanford",
+          degree: "MS",
+          field: "AI",
+          startDate: null,
+          endDate: "2021",
+          gpa: null,
+          raw: "Stanford",
+        },
+      ],
+    });
+    const merged = mergeExtractOntoHeuristic(heuristic, {
+      education: [{ school: "Somewhere", degree: null, field: null, raw: "x" }],
+    });
+    assert.equal(merged.education.length, 2);
+    assert.equal(merged.education[0].school, "MIT");
+  });
+
+  it("detects hollow vs signal extract payloads", () => {
+    assert.equal(llmExtractHasSignal({}), false);
+    assert.equal(llmExtractHasSignal({ summary: "   " }), false);
+    assert.equal(llmExtractHasSignal({ summary: "Software engineer" }), true);
+  });
+
+  it("flags weaker AI candidates vs heuristic", () => {
+    const rich = sampleData();
+    const thin = emptyIntelligentResumeData();
+    assert.equal(isWeakerThanHeuristic(thin, rich), true);
+    assert.ok(resumeContentScore(rich) > resumeContentScore(thin));
+  });
+});
+
+describe("AiEnhancementEngine AI→heuristic fallback", () => {
+  const envKeys = [
+    "DATABASE_URL",
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "JWT_SECRET",
+    "CORS_ORIGIN",
+    "SITE_URL",
+  ] as const;
+  const prev: Record<string, string | undefined> = {};
+
+  function ensureTestEnv() {
+    for (const k of envKeys) prev[k] = process.env[k];
+    process.env.DATABASE_URL =
+      process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/db";
+    process.env.SUPABASE_URL = process.env.SUPABASE_URL || "https://example.supabase.co";
+    process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "anon-key-for-tests";
+    process.env.SUPABASE_SERVICE_ROLE_KEY =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || "service-role-key-for-tests";
+    process.env.JWT_SECRET = process.env.JWT_SECRET || "x".repeat(32);
+    process.env.CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+    process.env.SITE_URL = process.env.SITE_URL || "http://localhost:3000";
+  }
+
+  function restoreEnv() {
+    for (const k of envKeys) {
+      if (prev[k] === undefined) delete process.env[k];
+      else process.env[k] = prev[k];
+    }
+  }
+
+  it("falls back to heuristic labels when every Ollama step fails", async () => {
+    ensureTestEnv();
+    try {
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
+
+      const failingLlm: LLMProvider = {
+        name: "ollama",
+        async chat() {
+          throw new Error("model unavailable");
+        },
+        async health() {
+          return {
+            provider: "ollama",
+            reachable: true,
+            chatModel: "test",
+            embedModel: "test",
+          };
+        },
+      };
+
+      const engine = new AiEnhancementEngine();
+      const run = await (
+        engine as unknown as {
+          runOllamaIntelligence: (
+            llm: LLMProvider,
+            source: IntelligentResumeData,
+            text: string,
+          ) => Promise<{ data: IntelligentResumeData; contributed: boolean; extractOk: boolean }>;
+        }
+      ).runOllamaIntelligence(failingLlm, sampleData(), "Ada Lovelace\nEngineer at Acme\nTypeScript");
+
+      assert.equal(run.contributed, false);
+      assert.equal(run.extractOk, false);
+      assert.equal(run.data.parser, "heuristic");
+      assert.equal(run.data.aiProvider, "heuristic");
+      assert.equal(run.data.experience[0].company, "Acme");
+    } finally {
+      restoreEnv();
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
+    }
+  });
+
+  it("falls back when Ollama returns only empty JSON", async () => {
+    ensureTestEnv();
+    try {
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
+
+      const emptyLlm: LLMProvider = {
+        name: "ollama",
+        async chat() {
+          return { content: "{}", model: "test", provider: "ollama" };
+        },
+        async health() {
+          return {
+            provider: "ollama",
+            reachable: true,
+            chatModel: "test",
+            embedModel: "test",
+          };
+        },
+      };
+
+      const engine = new AiEnhancementEngine();
+      const run = await (
+        engine as unknown as {
+          runOllamaIntelligence: (
+            llm: LLMProvider,
+            source: IntelligentResumeData,
+            text: string,
+          ) => Promise<{ data: IntelligentResumeData; contributed: boolean; extractOk: boolean }>;
+        }
+      ).runOllamaIntelligence(emptyLlm, sampleData(), "Ada Lovelace\nEngineer at Acme\nTypeScript");
+
+      assert.equal(run.contributed, false);
+      assert.equal(run.data.parser, "heuristic");
+      assert.equal(run.data.experience[0].company, "Acme");
+    } finally {
+      restoreEnv();
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
+    }
   });
 });
 
