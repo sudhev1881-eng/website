@@ -142,4 +142,128 @@ describe("resume-structured-parser.service", () => {
     assert.ok(merged.experience.length > 0);
     assert.ok(merged.education.length > 0);
   });
+
+  it("keeps heuristic experience when LLM returns hollow experience entries", () => {
+    const base = parseResumeHeuristic(SAMPLE_RESUME);
+    const merged = mergeLlmIntoHeuristic(base.structuredData, {
+      experience: [{ title: null, company: null, location: null, startDate: null, endDate: null, bullets: [], raw: "" }],
+    });
+    assert.ok(merged.experience.length >= 1);
+    assert.ok(merged.experience.some((e) => e.title || e.company));
+  });
+
+  it("extracts experience from Employment History with mm/yyyy dates and @ company", () => {
+    const text = `
+Alex Rivera
+alex@example.com
+
+EMPLOYMENT HISTORY
+Software Engineer @ TechCo
+01/2020 - 12/2022
+Built REST APIs and dashboards.
+
+Junior Developer @ StartupIO
+2018–2019
+Implemented React features.
+
+EDUCATION
+MIT
+`;
+    const { structuredData } = parseResumeHeuristic(text);
+    assert.ok(structuredData.sections.experience, "expected experience section");
+    assert.ok(structuredData.experience.length >= 2);
+    const tech = structuredData.experience.find(
+      (e) =>
+        (e.company ?? "").toLowerCase().includes("techco") ||
+        (e.title ?? "").toLowerCase().includes("software"),
+    );
+    assert.ok(tech);
+    assert.equal(tech!.startDate, "01/2020");
+    assert.equal(tech!.endDate, "12/2022");
+  });
+
+  it("extracts experience when Work Experience header shares the first job line", () => {
+    const text = `
+Jordan Lee
+jordan@example.com
+WORK EXPERIENCE Software Engineer | Acme Corp | NYC
+Jan. 2020 to Present
+• Shipped product features
+
+SKILLS
+Python, SQL
+`;
+    const { structuredData } = parseResumeHeuristic(text);
+    assert.ok(structuredData.experience.length >= 1);
+    const job = structuredData.experience[0];
+    assert.ok(
+      (job.title ?? "").toLowerCase().includes("software") ||
+        (job.company ?? "").toLowerCase().includes("acme"),
+    );
+    assert.equal(job.endDate, "Present");
+  });
+
+  it("extracts multiple jobs from collapsed PDF text with Professional Experience", () => {
+    // Realistic: zero newlines, company-first layout, en-dashes, Word bullet glyphs.
+    const text =
+      "LORETTA EXAMPLE, MBA [PHONE] | [EMAIL] LinkedIn.com/in/example " +
+      "Strategic HR Executive summary text goes here. " +
+      "PROFESSIONAL EXPERIENCE DONOVAN CORPORATION | Chicago, IL | $200M communications provider " +
+      "2008 – Present Director – US & International Human Resources Recruited to direct HR for US operations. " +
+      " HR Organization Leadership: Directed 4 HR professionals. " +
+      " International HR Launch: Created HR organization in Brazil. " +
+      "UNDERWRITERS LABORATORIES | Indianapolis, IN | Product testing laboratory " +
+      "2005 – 2007 Director – Human Resources Transformed HR into a strategic partner. " +
+      "GRAYSON INDUSTRIES | Indianapolis, IN | Enterprise learning company " +
+      "2003 – 2005 Manager – Human Resources Joined new management team. " +
+      "EDUCATION & PROFESSIONAL CREDENTIALS MBA Degree – Keller Graduate School of Management – 2008 " +
+      "SKILLS Leadership, Coaching, HRIS";
+
+    const { structuredData } = parseResumeHeuristic(text);
+    assert.ok(
+      structuredData.experience.length >= 3,
+      `expected >=3 jobs, got ${structuredData.experience.length}: ${JSON.stringify(
+        structuredData.experience.map((e) => ({
+          title: e.title,
+          company: e.company,
+          start: e.startDate,
+          end: e.endDate,
+        })),
+      )}`,
+    );
+
+    const donovan = structuredData.experience.find((e) =>
+      (e.company ?? "").toUpperCase().includes("DONOVAN"),
+    );
+    assert.ok(donovan, "expected Donovan Corporation job");
+    assert.equal(donovan!.startDate, "2008");
+    assert.equal(donovan!.endDate, "Present");
+    assert.ok(
+      (donovan!.title ?? "").toLowerCase().includes("director") ||
+        (donovan!.title ?? "").toLowerCase().includes("human resources"),
+    );
+    assert.ok(donovan!.bullets.length >= 1);
+
+    const ul = structuredData.experience.find((e) =>
+      (e.company ?? "").toUpperCase().includes("UNDERWRITERS"),
+    );
+    assert.ok(ul);
+    assert.equal(ul!.startDate, "2005");
+    assert.equal(ul!.endDate, "2007");
+  });
+
+  it("parses Present/Current end dates and Work History headers", () => {
+    const text = `
+Sam Example
+Work History
+Analyst — BigBank
+06/2019 - Current
+Analyzed financial data.
+`;
+    const { structuredData } = parseResumeHeuristic(text);
+    assert.ok(structuredData.experience.length >= 1);
+    const job = structuredData.experience[0];
+    assert.ok((job.title ?? "").toLowerCase().includes("analyst") || (job.company ?? "").toLowerCase().includes("bigbank"));
+    assert.equal(job.endDate, "Present");
+  });
 });
