@@ -2,13 +2,13 @@ import { Router } from "express";
 import { query, withTransaction } from "../db/pool.js";
 import { requireAuth, requireStudent, type AuthRequest } from "../middleware/supabase-auth.js";
 import { getStudentAnalytics } from "../services/analytics.js";
-import { resolvePublicFileUrl } from "../services/storage.js";
+import { createSignedFileUrl } from "../services/storage.js";
 
 export const studentsRouter = Router();
 
 studentsRouter.use(requireAuth, requireStudent);
 
-function formatResume(row: {
+async function formatResume(row: {
   file_name: string;
   file_size_bytes: number;
   file_path: string | null;
@@ -22,7 +22,7 @@ function formatResume(row: {
     fileSize: kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${Math.round(kb)} KB`,
     uploadedAt: row.uploaded_at.toISOString().split("T")[0],
     version: row.version,
-    downloadUrl: resolvePublicFileUrl(row.file_path),
+    downloadUrl: await createSignedFileUrl(row.file_path),
   };
 }
 
@@ -161,7 +161,7 @@ studentsRouter.get("/me", async (req: AuthRequest, res) => {
         period: e.period,
         description: e.description,
       })),
-      resume: formatResume(resume.rows[0] as {
+      resume: await formatResume(resume.rows[0] as {
         file_name: string;
         file_size_bytes: number;
         file_path: string | null;

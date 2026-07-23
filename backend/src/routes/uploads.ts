@@ -4,8 +4,8 @@ import { requireAuth, requireStudent, type AuthRequest } from "../middleware/sup
 import { resumeUpload, imageUpload, verifyFileSignature } from "../middleware/upload.js";
 import { enqueueResumeProcessing } from "../queues/resume-processing.queue.js";
 import {
+  createSignedFileUrl,
   deleteFile,
-  resolvePublicFileUrl,
   saveFile,
 } from "../services/storage.js";
 import {
@@ -136,7 +136,7 @@ uploadsRouter.post(
         fileSize: formatFileSize(draft.fileSizeBytes),
         uploadedAt: new Date().toISOString().split("T")[0],
         version: draft.version,
-        downloadUrl: resolvePublicFileUrl(draft.filePath),
+        downloadUrl: await createSignedFileUrl(draft.filePath),
         processingStatus: draft.extractable ? draft.processingStatus : "awaiting_confirmation",
         processingStage: draft.extractable ? draft.processingStage : "awaiting_confirmation",
         isDraft: true,
@@ -184,15 +184,15 @@ uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRe
       [studentId],
     );
 
-    res.json(
-      result.rows.map((r) => ({
+    const rows = await Promise.all(
+      result.rows.map(async (r) => ({
         id: r.id,
         fileName: r.file_name,
         version: r.version,
         active: r.is_active,
         isDraft: r.is_draft,
         uploadedAt: r.uploaded_at.toISOString().split("T")[0],
-        downloadUrl: resolvePublicFileUrl(r.file_path),
+        downloadUrl: await createSignedFileUrl(r.file_path),
         processingStatus: r.processing_status,
         processingStage: r.processing_stage ?? null,
         errorMessage: r.error_message ?? null,
@@ -200,6 +200,7 @@ uploadsRouter.get("/me/resumes", requireAuth, requireStudent, async (req: AuthRe
         skillsCount: r.skills_count ?? 0,
       })),
     );
+    res.json(rows);
   } catch (err) {
     console.error("GET /students/me/resumes error:", err);
     res.status(500).json({ error: "Failed to fetch resume history" });
@@ -246,7 +247,7 @@ uploadsRouter.get("/me/resumes/draft", requireAuth, requireStudent, async (req: 
       active: row.is_active,
       isDraft: row.is_draft,
       uploadedAt: row.uploaded_at.toISOString().split("T")[0],
-      downloadUrl: resolvePublicFileUrl(row.file_path),
+      downloadUrl: await createSignedFileUrl(row.file_path),
       processingStatus: row.processing_status,
       processingStage: row.processing_stage,
       errorMessage: row.error_message,
@@ -337,7 +338,7 @@ uploadsRouter.get(
         active: row.is_active,
         isDraft: row.is_draft,
         uploadedAt: row.uploaded_at.toISOString().split("T")[0],
-        downloadUrl: resolvePublicFileUrl(row.file_path),
+        downloadUrl: await createSignedFileUrl(row.file_path),
         processingStatus: row.processing_status,
         processingStage: row.processing_stage,
         errorMessage: row.error_message,
