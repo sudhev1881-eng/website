@@ -23,6 +23,61 @@ function bucketName(): string {
   return getEnv().SUPABASE_STORAGE_BUCKET;
 }
 
+const DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS = 60 * 60;
+
+function decodePathSegments(path: string): string {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    })
+    .join("/");
+}
+
+function extractStorageEndpointPath(value: string): string | null {
+  const withoutQuery = value.split("?")[0];
+  let pathname = withoutQuery;
+
+  if (value.includes("://")) {
+    try {
+      pathname = new URL(value).pathname;
+    } catch {
+      return null;
+    }
+  }
+
+  for (const marker of ["/storage/v1/object/public/", "/storage/v1/object/sign/"]) {
+    const idx = pathname.indexOf(marker);
+    if (idx === -1) continue;
+
+    const afterMarker = pathname.slice(idx + marker.length);
+    const slash = afterMarker.indexOf("/");
+    if (slash === -1) return null;
+    return decodePathSegments(afterMarker.slice(slash + 1));
+  }
+
+  return null;
+}
+
+export function normalizeStorageObjectPath(filePath: string | null | undefined): string | null {
+  const trimmed = filePath?.trim();
+  if (!trimmed) return null;
+
+  const endpointPath = extractStorageEndpointPath(trimmed);
+  if (endpointPath) return endpointPath;
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+
+  return decodePathSegments(trimmed.replace(/^\/api\/uploads\//, "").replace(/^\//, ""));
+}
+
 function buildObjectPath(
   category: FileCategory,
   ownerId: string,
@@ -99,7 +154,10 @@ export async function deleteFile(relativePath: string | null | undefined): Promi
 
 /** Download an object via the service-role client (not a public/anon URL guess). */
 export async function downloadFile(relativePath: string): Promise<Buffer> {
-  const path = relativePath.replace(/^\/api\/uploads\//, "").replace(/^\//, "");
+  const path = normalizeStorageObjectPath(relativePath);
+  if (!path || path.startsWith("http://") || path.startsWith("https://")) {
+    throw new Error(`Invalid storage object path: ${relativePath}`);
+  }
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.storage.from(bucketName()).download(path);
   if (error || !data) {
@@ -112,8 +170,29 @@ export async function downloadFile(relativePath: string): Promise<Buffer> {
 export function resolvePublicFileUrl(filePath: string | null | undefined): string | null {
   if (!filePath) return null;
   if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;
-  const path = filePath.replace(/^\/api\/uploads\//, "").replace(/^\//, "");
+  const path = normalizeStorageObjectPath(filePath);
+  if (!path || path.startsWith("http://") || path.startsWith("https://")) return path;
   return getPublicFileUrl(path);
+}
+
+export async function createSignedFileUrl(
+  filePath: string | null | undefined,
+  expiresInSeconds = DEFAULT_SIGNED_URL_EXPIRES_IN_SECONDS,
+): Promise<string | null> {
+  const path = normalizeStorageObjectPath(filePath);
+  if (!path) return null;
+  if (path.startsWith("http://") || path.startsWith("https://")) return path;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.storage
+    .from(bucketName())
+    .createSignedUrl(path, expiresInSeconds);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message ?? `Failed to create signed URL for storage object: ${path}`);
+  }
+
+  return data.signedUrl;
 }
 
 export interface StorageBreakdownItem {
