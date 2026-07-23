@@ -93,11 +93,47 @@ describe("OllamaProvider (mocked HTTP)", () => {
       throw new Error("ECONNREFUSED");
     }) as typeof fetch;
 
-    const { OllamaProvider } = await import("../ai/providers/ollama.provider.js");
+    const { OllamaProvider, clearOllamaHealthCache } = await import("../ai/providers/ollama.provider.js");
+    clearOllamaHealthCache();
     const provider = new OllamaProvider();
     const health = await provider.health();
     assert.equal(health.reachable, false);
     assert.match(health.error ?? "", /ECONNREFUSED/);
+  });
+
+  it("skips localhost probe on hosted runtimes without waiting on fetch", async () => {
+    const prevRender = process.env.RENDER;
+    const prevSkip = process.env.OLLAMA_SKIP_LOCALHOST;
+    process.env.RENDER = "true";
+    delete process.env.OLLAMA_SKIP_LOCALHOST;
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+    resetEnvCache();
+
+    let fetchCalls = 0;
+    globalThis.fetch = mock.fn(async () => {
+      fetchCalls += 1;
+      throw new Error("should not be called");
+    }) as typeof fetch;
+
+    try {
+      const { OllamaProvider, clearOllamaHealthCache, shouldSkipLocalOllamaProbe } = await import(
+        "../ai/providers/ollama.provider.js"
+      );
+      assert.equal(shouldSkipLocalOllamaProbe("http://127.0.0.1:11434"), true);
+      clearOllamaHealthCache();
+      const provider = new OllamaProvider();
+      const started = Date.now();
+      const health = await provider.health();
+      assert.equal(health.reachable, false);
+      assert.match(health.error ?? "", /skipped/i);
+      assert.equal(fetchCalls, 0);
+      assert.ok(Date.now() - started < 500);
+    } finally {
+      if (prevRender === undefined) delete process.env.RENDER;
+      else process.env.RENDER = prevRender;
+      if (prevSkip === undefined) delete process.env.OLLAMA_SKIP_LOCALHOST;
+      else process.env.OLLAMA_SKIP_LOCALHOST = prevSkip;
+    }
   });
 });
 

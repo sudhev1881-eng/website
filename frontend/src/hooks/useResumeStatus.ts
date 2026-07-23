@@ -22,20 +22,25 @@ const PROCESSING = new Set([
   "embedding",
 ]);
 
+/** Stop polling after this long so the UI never spins forever on a stuck job. */
+const DEFAULT_MAX_POLL_MS = 90_000;
+
 /**
- * Poll resume processing status until terminal (or max attempts).
+ * Poll resume processing status until terminal (or max duration).
  * No react-query in this project — uses useEffect + setInterval.
  */
 export function useResumeStatus(
   resumeId: string | null | undefined,
-  options?: { enabled?: boolean; intervalMs?: number },
+  options?: { enabled?: boolean; intervalMs?: number; maxPollMs?: number },
 ) {
   const enabled = options?.enabled !== false && Boolean(resumeId);
   const intervalMs = options?.intervalMs ?? 2000;
+  const maxPollMs = options?.maxPollMs ?? DEFAULT_MAX_POLL_MS;
 
   const [status, setStatus] = React.useState<ResumeStatusDetail | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [stalled, setStalled] = React.useState(false);
 
   const fetchOnce = React.useCallback(async () => {
     if (!resumeId) return null;
@@ -48,11 +53,21 @@ export function useResumeStatus(
   React.useEffect(() => {
     if (!enabled || !resumeId) {
       setStatus(null);
+      setStalled(false);
       return;
     }
 
     let cancelled = false;
     let timer: ReturnType<typeof setInterval> | null = null;
+    const startedAt = Date.now();
+    setStalled(false);
+
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
 
     const tick = async () => {
       try {
@@ -60,8 +75,15 @@ export function useResumeStatus(
         const detail = await fetchOnce();
         if (cancelled || !detail) return;
         if (TERMINAL.has(detail.processingStatus)) {
-          if (timer) clearInterval(timer);
-          timer = null;
+          stop();
+          return;
+        }
+        if (Date.now() - startedAt >= maxPollMs) {
+          stop();
+          setStalled(true);
+          setError(
+            "Resume is taking longer than expected. Refresh in a moment, or try uploading again.",
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -77,9 +99,9 @@ export function useResumeStatus(
 
     return () => {
       cancelled = true;
-      if (timer) clearInterval(timer);
+      stop();
     };
-  }, [enabled, resumeId, intervalMs, fetchOnce]);
+  }, [enabled, resumeId, intervalMs, maxPollMs, fetchOnce]);
 
   const isProcessing = status ? PROCESSING.has(status.processingStatus) : false;
   const awaitsConfirmation = status?.processingStatus === "awaiting_confirmation";
@@ -90,7 +112,8 @@ export function useResumeStatus(
     status,
     loading,
     error,
-    isProcessing,
+    stalled,
+    isProcessing: isProcessing && !stalled,
     awaitsConfirmation,
     isConfirmed,
     refresh: fetchOnce,

@@ -55,6 +55,8 @@ function extractJsonContent(raw: string): string {
 const HEALTH_CACHE_OK_MS = 30_000;
 /** Cache unreachable results longer so Render free hosts don't re-probe every request. */
 const HEALTH_CACHE_FAIL_MS = 5 * 60_000;
+/** Health probe must fail fast — never block resume upload for a dead Ollama. */
+const HEALTH_PROBE_TIMEOUT_MS = 1_500;
 let healthCache: { at: number; value: ProviderHealth } | null = null;
 
 function isLoopbackHost(hostname: string): boolean {
@@ -66,7 +68,7 @@ function isLoopbackHost(hostname: string): boolean {
  * On hosted platforms (e.g. Render), a default localhost Ollama URL can never work.
  * Skip the TCP probe so resume AI status / enhance stay fast in heuristic mode.
  */
-function shouldSkipLocalOllamaProbe(url: string): boolean {
+export function shouldSkipLocalOllamaProbe(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (!isLoopbackHost(parsed.hostname)) return false;
@@ -78,6 +80,28 @@ function shouldSkipLocalOllamaProbe(url: string): boolean {
     process.env.NODE_ENV === "production" ||
     process.env.OLLAMA_SKIP_LOCALHOST === "true"
   );
+}
+
+/** Sticky fail so enhance/embed skip immediately after one dead Ollama attempt. */
+export function markOllamaUnreachable(error: string): void {
+  const root = baseUrl();
+  healthCache = {
+    at: Date.now(),
+    value: {
+      reachable: false,
+      provider: "ollama",
+      chatModel: chatModel(),
+      embedModel: embedModel(),
+      baseUrl: root,
+      error,
+      latencyMs: 0,
+    },
+  };
+}
+
+/** Test helper — clear sticky health cache between cases. */
+export function clearOllamaHealthCache(): void {
+  healthCache = null;
 }
 
 /**
@@ -222,7 +246,11 @@ export class OllamaProvider implements LLMProvider, EmbeddingProvider {
     }
 
     try {
-      const res = await fetchWithTimeout(`${root}/api/tags`, { method: "GET" }, 2_500);
+      const res = await fetchWithTimeout(
+        `${root}/api/tags`,
+        { method: "GET" },
+        HEALTH_PROBE_TIMEOUT_MS,
+      );
       const value: ProviderHealth = !res.ok
         ? {
             reachable: false,

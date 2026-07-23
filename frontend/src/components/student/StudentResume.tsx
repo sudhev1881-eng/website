@@ -656,6 +656,8 @@ export function StudentResume() {
     status: draftStatus,
     isProcessing,
     awaitsConfirmation,
+    error: pollError,
+    stalled: pollStalled,
     refresh: refreshDraftStatus,
   } = useResumeStatus(draftId, { enabled: Boolean(draftId) });
 
@@ -876,8 +878,12 @@ export function StudentResume() {
             </CardHeader>
             <CardContent className="space-y-4">
               <AiProviderHint status={aiStatus} />
+              {pollError ? (
+                <p className="text-sm text-muted-foreground">{pollError}</p>
+              ) : null}
               {isProcessing ||
-              (!requireConfirmation &&
+              (!pollStalled &&
+                !requireConfirmation &&
                 draftDetail &&
                 !awaitsConfirmation &&
                 draftDetail.processingStatus !== "failed") ? (

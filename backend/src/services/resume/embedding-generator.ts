@@ -161,7 +161,7 @@ export class EmbeddingGenerator {
     provider: EmbeddingProvider,
     texts: string[],
   ): Promise<{ embeddings: number[][]; model: string; provider: string }> {
-    const result = await provider.embed(texts, { timeoutMs: 90_000 });
+    const result = await provider.embed(texts, { timeoutMs: 8_000 });
     return {
       embeddings: result.embeddings,
       model: result.model,

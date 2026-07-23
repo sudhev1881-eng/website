@@ -239,9 +239,11 @@ describe("AiEnhancementEngine AI→heuristic fallback", () => {
       const { resetEnvCache } = await import("../../config/env.js");
       resetEnvCache();
 
+      let chatCalls = 0;
       const failingLlm: LLMProvider = {
         name: "ollama",
         async chat() {
+          chatCalls += 1;
           throw new Error("model unavailable");
         },
         async health() {
@@ -261,16 +263,57 @@ describe("AiEnhancementEngine AI→heuristic fallback", () => {
             llm: LLMProvider,
             source: IntelligentResumeData,
             text: string,
-          ) => Promise<{ data: IntelligentResumeData; contributed: boolean; extractOk: boolean }>;
+          ) => Promise<{
+            data: IntelligentResumeData;
+            contributed: boolean;
+            extractOk: boolean;
+            abortedEarly: boolean;
+          }>;
         }
       ).runOllamaIntelligence(failingLlm, sampleData(), "Ada Lovelace\nEngineer at Acme\nTypeScript");
 
       assert.equal(run.contributed, false);
       assert.equal(run.extractOk, false);
+      assert.equal(run.abortedEarly, true);
+      assert.equal(chatCalls, 1, "must abort after first failed LLM step (no 4×60s chain)");
       assert.equal(run.data.parser, "heuristic");
       assert.equal(run.data.aiProvider, "heuristic");
       assert.equal(run.data.experience[0].company, "Acme");
     } finally {
+      restoreEnv();
+      const { resetEnvCache } = await import("../../config/env.js");
+      resetEnvCache();
+    }
+  });
+
+  it("enhance skips AI within 2s when Ollama is marked unreachable", async () => {
+    ensureTestEnv();
+    const prevProvider = process.env.RESUME_AI_PROVIDER;
+    process.env.RESUME_AI_PROVIDER = "ollama";
+    try {
+      const { resetEnvCache } = await import("../../config/env.js");
+      const { markOllamaUnreachable, clearOllamaHealthCache } = await import("../ai/index.js");
+      resetEnvCache();
+      clearOllamaHealthCache();
+      markOllamaUnreachable("forced unavailable for test");
+
+      const engine = new AiEnhancementEngine();
+      const started = Date.now();
+      const result = await engine.enhance(
+        sampleData(),
+        "Ada Lovelace\nEngineer at Acme\nTypeScript Python",
+      );
+      const elapsed = Date.now() - started;
+
+      assert.equal(result.enhanced, false);
+      assert.equal(result.provider, "heuristic");
+      assert.equal(result.skippedReason, "unavailable");
+      assert.ok(elapsed < 2_000, `expected fail-fast enhance, took ${elapsed}ms`);
+    } finally {
+      if (prevProvider === undefined) delete process.env.RESUME_AI_PROVIDER;
+      else process.env.RESUME_AI_PROVIDER = prevProvider;
+      const { clearOllamaHealthCache } = await import("../ai/index.js");
+      clearOllamaHealthCache();
       restoreEnv();
       const { resetEnvCache } = await import("../../config/env.js");
       resetEnvCache();

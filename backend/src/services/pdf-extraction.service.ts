@@ -43,6 +43,17 @@ export async function extractText(buffer: Buffer): Promise<string> {
     return text.trim();
   }
 
+  // Hosted free tiers: prefer partial extract over multi-minute Tesseract hangs.
+  // Force OCR with RESUME_OCR_FORCE=true when scanning image-only PDFs on Render.
+  const hosted =
+    Boolean(process.env.RENDER) || process.env.NODE_ENV === "production";
+  if (hosted && text.trim().length > 0 && process.env.RESUME_OCR_FORCE !== "true") {
+    logger.info("Skipping OCR on hosted runtime; using partial PDF text extract", {
+      textLength: text.trim().length,
+    });
+    return text.trim();
+  }
+
   // Scanned / image-only PDF — free OCR path
   const ocrEnabled = process.env.RESUME_OCR_ENABLED !== "false";
   if (!ocrEnabled) {
@@ -58,15 +69,25 @@ export async function extractText(buffer: Buffer): Promise<string> {
     10,
     Math.max(1, Number(process.env.RESUME_OCR_MAX_PAGES ?? 5) || 5),
   );
+  const ocrBudgetMs = Math.min(
+    60_000,
+    Math.max(3_000, Number(process.env.RESUME_OCR_TIMEOUT_MS ?? 15_000) || 15_000),
+  );
 
   logger.info("PDF text too short; attempting OCR", {
     textLength: text.trim().length,
     maxPages,
+    ocrBudgetMs,
   });
 
   try {
     const { extractPdfTextWithOcr } = await import("./pdf-ocr.service.js");
-    const ocr = await extractPdfTextWithOcr(buffer, maxPages);
+    const ocr = await Promise.race([
+      extractPdfTextWithOcr(buffer, maxPages),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`OCR timed out after ${ocrBudgetMs}ms`)), ocrBudgetMs);
+      }),
+    ]);
     return ocr.text;
   } catch (ocrErr) {
     // Soft-fail: never hard-fail the resume pipeline because OCR OOM'd / timed out

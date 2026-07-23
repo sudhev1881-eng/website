@@ -4,6 +4,7 @@ import {
   buildResumeEnhanceMessages,
   buildResumeExtractMessages,
   buildSkillInferMessages,
+  markOllamaUnreachable,
   resolveResumeAiBundle,
   sanitizeResumeText,
   type LLMProvider,
@@ -24,6 +25,10 @@ export interface EnhancementResult {
 }
 
 const MAX_CHARS = 14_000;
+/** Per-step chat budget — never wait 60–90s when Ollama is half-dead. */
+const LLM_STEP_TIMEOUT_MS = 8_000;
+/** Hard wall clock for the whole Ollama enrich pass before heuristic fallback. */
+const LLM_OVERALL_BUDGET_MS = 20_000;
 
 /**
  * AiEnhancementEngine — Ollama (via AI factory) polish + extract enrichment.
@@ -67,6 +72,7 @@ export class AiEnhancementEngine {
           extractOk: run.extractOk,
           contributed: run.contributed,
           weaker: isWeakerThanHeuristic(run.data, optimized),
+          abortedEarly: run.abortedEarly,
         });
         return {
           data: { ...optimized, parser: "heuristic", aiProvider: "heuristic" },
@@ -81,9 +87,9 @@ export class AiEnhancementEngine {
         provider: "ollama",
       };
     } catch (err) {
-      logger.warn("Ollama resume enhancement failed; using heuristic data", {
-        message: err instanceof Error ? err.message : String(err),
-      });
+      const message = err instanceof Error ? err.message : String(err);
+      markOllamaUnreachable(message);
+      logger.warn("Ollama resume enhancement failed; using heuristic data", { message });
       return {
         data: { ...optimized, parser: "heuristic", aiProvider: "heuristic" },
         enhanced: false,
@@ -97,17 +103,45 @@ export class AiEnhancementEngine {
     llm: LLMProvider,
     source: IntelligentResumeData,
     cleanedText: string,
-  ): Promise<{ data: IntelligentResumeData; contributed: boolean; extractOk: boolean }> {
+  ): Promise<{
+    data: IntelligentResumeData;
+    contributed: boolean;
+    extractOk: boolean;
+    abortedEarly: boolean;
+  }> {
     let merged = source;
     let extractOk = false;
     let contributed = false;
+    const deadline = Date.now() + LLM_OVERALL_BUDGET_MS;
+
+    const remainingTimeout = () =>
+      Math.max(500, Math.min(LLM_STEP_TIMEOUT_MS, deadline - Date.now()));
+
+    /** One failure (timeout / network) aborts the rest — no multi-minute step chain. */
+    const chatFailFast = async (
+      messages: Parameters<LLMProvider["chat"]>[0],
+      options: Parameters<LLMProvider["chat"]>[1],
+    ) => {
+      if (Date.now() >= deadline) {
+        throw new Error("Ollama enhance budget exhausted");
+      }
+      try {
+        return await llm.chat(messages, {
+          ...options,
+          timeoutMs: remainingTimeout(),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        markOllamaUnreachable(message);
+        throw err;
+      }
+    };
 
     // 1) Structured extract (merge onto heuristic — never wipe with hollow LLM)
     try {
-      const extract = await llm.chat(buildResumeExtractMessages(cleanedText), {
+      const extract = await chatFailFast(buildResumeExtractMessages(cleanedText), {
         json: true,
         temperature: 0,
-        timeoutMs: 90_000,
       });
       const parsed = safeParseJson(extract.content);
       if (parsed && llmExtractHasSignal(parsed)) {
@@ -117,22 +151,27 @@ export class AiEnhancementEngine {
           merged = next;
           contributed = true;
         } else {
-          // Bad/sparse extract — keep heuristic base, do not treat as success
           logger.warn("Ollama extract was weaker than heuristic; keeping built-in parse");
         }
       } else if (parsed) {
         logger.warn("Ollama extract returned empty/hollow JSON; keeping heuristic base");
       }
     } catch (err) {
-      logger.warn("Ollama extract step failed; continuing with heuristic base", {
+      logger.warn("Ollama extract step failed; skipping remaining AI steps", {
         message: err instanceof Error ? err.message : String(err),
       });
+      return {
+        data: { ...source, parser: "heuristic", aiProvider: "heuristic" },
+        contributed: false,
+        extractOk: false,
+        abortedEarly: true,
+      };
     }
 
     // 2) Skill inference from projects/experience
     try {
       const beforeSkills = merged.skills.all.length;
-      const skillRes = await llm.chat(
+      const skillRes = await chatFailFast(
         buildSkillInferMessages(
           {
             projects: merged.projects.slice(0, 12),
@@ -144,7 +183,7 @@ export class AiEnhancementEngine {
           },
           cleanedText,
         ),
-        { json: true, temperature: 0, timeoutMs: 60_000 },
+        { json: true, temperature: 0 },
       );
       const skillJson = safeParseJson(skillRes.content) as {
         technical?: Array<{ name?: string; category?: string; confidence?: number }>;
@@ -155,14 +194,15 @@ export class AiEnhancementEngine {
         if (merged.skills.all.length > beforeSkills) contributed = true;
       }
     } catch (err) {
-      logger.warn("Ollama skill-infer step failed", {
+      logger.warn("Ollama skill-infer step failed; skipping remaining AI steps", {
         message: err instanceof Error ? err.message : String(err),
       });
+      return finalizePartial(merged, source, contributed, extractOk, true);
     }
 
     // 3) Domain classification
     try {
-      const classRes = await llm.chat(
+      const classRes = await chatFailFast(
         buildClassifyMessages(
           {
             summary: merged.summary,
@@ -172,7 +212,7 @@ export class AiEnhancementEngine {
           },
           cleanedText,
         ),
-        { json: true, temperature: 0, timeoutMs: 45_000 },
+        { json: true, temperature: 0 },
       );
       const classJson = safeParseJson(classRes.content) as {
         domains?: string[];
@@ -191,15 +231,16 @@ export class AiEnhancementEngine {
         }
       }
     } catch (err) {
-      logger.warn("Ollama classify step failed", {
+      logger.warn("Ollama classify step failed; skipping remaining AI steps", {
         message: err instanceof Error ? err.message : String(err),
       });
+      return finalizePartial(merged, source, contributed, extractOk, true);
     }
 
     // 4) Wording polish (no invent)
     try {
       const before = resumeContentScore(merged);
-      const polishRes = await llm.chat(
+      const polishRes = await chatFailFast(
         buildResumeEnhanceMessages(
           {
             summary: merged.summary,
@@ -217,7 +258,7 @@ export class AiEnhancementEngine {
           },
           cleanedText,
         ),
-        { json: true, temperature: 0.2, timeoutMs: 60_000 },
+        { json: true, temperature: 0.2 },
       );
       const polished = safeParseJson(polishRes.content) as Partial<IntelligentResumeData> | null;
       if (polished) {
@@ -235,29 +276,46 @@ export class AiEnhancementEngine {
         }
       }
     } catch (err) {
-      logger.warn("Ollama enhance step failed", {
+      logger.warn("Ollama enhance step failed; using partial AI result", {
         message: err instanceof Error ? err.message : String(err),
       });
+      return finalizePartial(merged, source, contributed, extractOk, true);
     }
 
-    if (!contributed) {
-      return {
-        data: { ...source, parser: "heuristic", aiProvider: "heuristic" },
-        contributed: false,
-        extractOk,
-      };
-    }
+    return finalizePartial(merged, source, contributed, extractOk, false);
+  }
+}
 
+function finalizePartial(
+  merged: IntelligentResumeData,
+  source: IntelligentResumeData,
+  contributed: boolean,
+  extractOk: boolean,
+  abortedEarly: boolean,
+): {
+  data: IntelligentResumeData;
+  contributed: boolean;
+  extractOk: boolean;
+  abortedEarly: boolean;
+} {
+  if (!contributed) {
     return {
-      data: {
-        ...merged,
-        parser: extractOk ? "ollama" : "heuristic+llm",
-        aiProvider: "ollama",
-      },
-      contributed: true,
+      data: { ...source, parser: "heuristic", aiProvider: "heuristic" },
+      contributed: false,
       extractOk,
+      abortedEarly,
     };
   }
+  return {
+    data: {
+      ...merged,
+      parser: extractOk ? "ollama" : "heuristic+llm",
+      aiProvider: "ollama",
+    },
+    contributed: true,
+    extractOk,
+    abortedEarly,
+  };
 }
 
 function safeParseJson(raw: string): unknown | null {

@@ -251,7 +251,7 @@ async function vectorSearchStudents(
   let queryEmbedding: number[];
   try {
     const embedded = await bundle.embeddings.embed([queryText.slice(0, 2000)], {
-      timeoutMs: 30_000,
+      timeoutMs: 8_000,
     });
     queryEmbedding = embedded.embeddings[0] ?? [];
   } catch (err) {
