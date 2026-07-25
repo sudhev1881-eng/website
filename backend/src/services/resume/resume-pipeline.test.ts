@@ -431,8 +431,28 @@ describe("UserConfirmationService.confirm", () => {
     let appliedProfile = false;
     let deletedPreviousFiles = false;
     let replaceEmbeddingsCalled = false;
+    const envKeys = [
+      "DATABASE_URL",
+      "SUPABASE_URL",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "JWT_SECRET",
+      "CORS_ORIGIN",
+      "SITE_URL",
+    ] as const;
+    const prevEnv: Record<string, string | undefined> = {};
+    for (const key of envKeys) prevEnv[key] = process.env[key];
 
     try {
+      process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+      process.env.SUPABASE_URL = "https://example.supabase.co";
+      process.env.SUPABASE_ANON_KEY = "anon-key-for-tests";
+      process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key-for-tests";
+      process.env.JWT_SECRET = "x".repeat(32);
+      process.env.CORS_ORIGIN = "http://localhost:3000";
+      process.env.SITE_URL = "http://localhost:3000";
+      resetEnvCache();
+
       db.getDraftPayload = async () => ({
         resume: {
           id: "resume-1",
@@ -512,6 +532,11 @@ describe("UserConfirmationService.confirm", () => {
       db.replaceEmbeddings = originals.replaceEmbeddings;
       embeddings.generate = originals.generate;
       storage.deleteMany = originals.deleteMany;
+      for (const key of envKeys) {
+        if (prevEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = prevEnv[key];
+      }
+      resetEnvCache();
     }
   });
 });
