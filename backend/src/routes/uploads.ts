@@ -118,16 +118,22 @@ uploadsRouter.post(
         buffer: file.buffer,
       });
 
+      let processingScheduled = false;
       if (draft.extractable) {
-        await enqueueResumeProcessing({
+        processingScheduled = await enqueueResumeProcessing({
           resumeId: draft.resumeId,
           studentId,
           filePath: draft.filePath,
           fileName: draft.fileName,
         });
+        if (!processingScheduled) {
+          await markSkippedDraftAwaitingConfirm(draft.resumeId, studentId);
+        }
       } else {
         await markSkippedDraftAwaitingConfirm(draft.resumeId, studentId);
       }
+
+      const awaitingConfirmation = !draft.extractable || !processingScheduled;
 
       res.status(201).json({
         id: draft.resumeId,
@@ -137,8 +143,8 @@ uploadsRouter.post(
         uploadedAt: new Date().toISOString().split("T")[0],
         version: draft.version,
         downloadUrl: resolvePublicFileUrl(draft.filePath),
-        processingStatus: draft.extractable ? draft.processingStatus : "awaiting_confirmation",
-        processingStage: draft.extractable ? draft.processingStage : "awaiting_confirmation",
+        processingStatus: awaitingConfirmation ? "awaiting_confirmation" : draft.processingStatus,
+        processingStage: awaitingConfirmation ? "awaiting_confirmation" : draft.processingStage,
         isDraft: true,
         errorMessage: draft.errorMessage ?? null,
         requireConfirmation: getEnv().RESUME_REQUIRE_CONFIRMATION,

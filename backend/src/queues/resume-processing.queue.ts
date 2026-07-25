@@ -51,10 +51,10 @@ export function getResumeProcessingMode(): typeof mode {
   return mode;
 }
 
-export async function enqueueResumeProcessing(data: ResumeProcessingJobData): Promise<void> {
+export async function enqueueResumeProcessing(data: ResumeProcessingJobData): Promise<boolean> {
   if (!resumeProcessingEnabled()) {
     logger.debug("Resume processing disabled; skipping enqueue", { resumeId: data.resumeId });
-    return;
+    return false;
   }
 
   if (mode === "bullmq" && queue) {
@@ -65,7 +65,7 @@ export async function enqueueResumeProcessing(data: ResumeProcessingJobData): Pr
       removeOnFail: 200,
     });
     logger.info("Resume job enqueued (BullMQ)", { resumeId: data.resumeId });
-    return;
+    return true;
   }
 
   // In-process fallback — same processor; failures mark status failed inside processResumeJob.
@@ -78,6 +78,7 @@ export async function enqueueResumeProcessing(data: ResumeProcessingJobData): Pr
     });
   });
   logger.info("Resume job scheduled (in-process)", { resumeId: data.resumeId });
+  return true;
 }
 
 export async function startResumeProcessingWorker(): Promise<void> {

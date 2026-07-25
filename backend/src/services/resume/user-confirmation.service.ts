@@ -142,21 +142,32 @@ export class UserConfirmationService {
         decisions,
       });
 
-      // Embeddings are optional — never block confirm
-      await databaseManager.setStage(resumeId, studentId, "embedding", "embedding");
-      const embedding = await embeddingGenerator.generate(enhanced, {
-        studentId,
-        resumeId,
-      });
-      await databaseManager.replaceEmbeddings({
-        studentId,
-        resumeId,
-        chunks: embedding.chunks,
-        status: embedding.status,
-        provider: embedding.provider,
-        model: embedding.model,
-        vectorRows: embedding.vectorRows,
-      });
+      let embeddingStatus = "failed";
+      try {
+        // Embeddings are optional — never block confirm.
+        await databaseManager.setStage(resumeId, studentId, "embedding", "embedding");
+        const embedding = await embeddingGenerator.generate(enhanced, {
+          studentId,
+          resumeId,
+        });
+        embeddingStatus = embedding.status;
+        await databaseManager.replaceEmbeddings({
+          studentId,
+          resumeId,
+          chunks: embedding.chunks,
+          status: embedding.status,
+          provider: embedding.provider,
+          model: embedding.model,
+          vectorRows: embedding.vectorRows,
+        });
+      } catch (err) {
+        embeddingStatus = "failed";
+        logger.warn("Resume embedding step failed after confirmation; continuing", {
+          resumeId,
+          studentId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
       await databaseManager.setStage(resumeId, studentId, "confirmed", "confirmed");
 
       await storageManager.deleteMany(previousFilePaths);
@@ -164,10 +175,10 @@ export class UserConfirmationService {
       logger.info(options?.autoApply ? "Resume draft auto-confirmed" : "Resume draft confirmed", {
         resumeId,
         studentId,
-        embeddingStatus: embedding.status,
+        embeddingStatus,
       });
 
-      return { resumeId, embeddingStatus: embedding.status };
+      return { resumeId, embeddingStatus };
     } catch (err) {
       logger.error("Resume confirm failed", {
         resumeId,
