@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { resetEnvCache } from "../../config/env.js";
+import { enqueueResumeProcessing } from "../../queues/resume-processing.queue.js";
 import { ValidationEngine } from "./validation-engine.js";
 import {
   mergeEnhancementNoInvent,
@@ -10,8 +12,8 @@ import {
   AiEnhancementEngine,
 } from "./ai-enhancement.engine.js";
 import type { LLMProvider } from "../ai/index.js";
-import { applySectionAction } from "./user-confirmation.service.js";
-import { selectResumesToReplace } from "./database-manager.js";
+import { applySectionAction, UserConfirmationService } from "./user-confirmation.service.js";
+import { databaseManager, selectResumesToReplace } from "./database-manager.js";
 import {
   planAcceptedProfile,
   buildPublicProfileFallbackFromResume,
@@ -19,7 +21,8 @@ import {
   mapPublicLinks,
 } from "./profile-builder.js";
 import { coerceToIntelligentResumeData } from "./schema-mapper.js";
-import { EmbeddingGenerator } from "./embedding-generator.js";
+import { EmbeddingGenerator, embeddingGenerator } from "./embedding-generator.js";
+import { storageManager } from "./storage-manager.js";
 import { emptyIntelligentResumeData, type IntelligentResumeData } from "./types.js";
 
 function sampleData(overrides?: Partial<IntelligentResumeData>): IntelligentResumeData {
@@ -406,6 +409,153 @@ describe("applySectionAction / confirmation decisions", () => {
     assert.equal(next.customSections.length, 1);
     assert.equal(next.customSections[0].title, "Side projects");
     assert.equal(decisions.customSections?.accepted, true);
+  });
+});
+
+describe("UserConfirmationService.confirm", () => {
+  it("keeps confirmation successful when embedding persistence fails", async () => {
+    const db = databaseManager as any;
+    const embeddings = embeddingGenerator as any;
+    const storage = storageManager as any;
+    const originals = {
+      getDraftPayload: db.getDraftPayload,
+      confirmDraftReplace: db.confirmDraftReplace,
+      applyAcceptedProfile: db.applyAcceptedProfile,
+      setStage: db.setStage,
+      replaceEmbeddings: db.replaceEmbeddings,
+      generate: embeddings.generate,
+      deleteMany: storage.deleteMany,
+    };
+    const enhanced = sampleData({ certifications: [] });
+    const stages: Array<{ status: string; stage: string; errorMessage: string | null }> = [];
+    let appliedProfile = false;
+    let deletedPreviousFiles = false;
+    let replaceEmbeddingsCalled = false;
+
+    try {
+      db.getDraftPayload = async () => ({
+        resume: {
+          id: "resume-1",
+          file_name: "resume.pdf",
+          file_size_bytes: 123,
+          file_path: "resumes/student-1/pending/resume.pdf",
+          version: 1,
+          is_active: false,
+          is_draft: true,
+          uploaded_at: new Date(),
+          processing_status: "awaiting_confirmation",
+          processing_stage: "awaiting_confirmation",
+          error_message: null,
+          processed_at: null,
+        },
+        extracted: {
+          raw_text: "Ada Lovelace TypeScript",
+          structured_data: enhanced,
+          extraction_confidence: 0.9,
+          raw_extracted: enhanced,
+          enhanced_data: enhanced,
+          validation_flags: [],
+          section_decisions: {},
+        },
+      });
+      db.confirmDraftReplace = async () => ({
+        previousFilePaths: ["resumes/student-1/old.pdf"],
+        promotedResumeId: "resume-1",
+      });
+      db.applyAcceptedProfile = async () => {
+        appliedProfile = true;
+      };
+      db.setStage = async (
+        _resumeId: string,
+        _studentId: string,
+        status: string,
+        stage: string,
+        errorMessage: string | null = null,
+      ) => {
+        stages.push({ status, stage, errorMessage });
+      };
+      embeddings.generate = async () => ({
+        status: "completed",
+        chunks: [],
+        vectorRows: [],
+        provider: "ollama",
+        model: "nomic-embed-text",
+      });
+      db.replaceEmbeddings = async () => {
+        replaceEmbeddingsCalled = true;
+        throw new Error("resume_embeddings provider column missing");
+      };
+      storage.deleteMany = async (paths: string[]) => {
+        deletedPreviousFiles = true;
+        assert.deepEqual(paths, ["resumes/student-1/old.pdf"]);
+      };
+
+      const result = await new UserConfirmationService().confirm("student-1", "resume-1", {
+        autoApply: true,
+      });
+
+      assert.equal(result.resumeId, "resume-1");
+      assert.equal(result.embeddingStatus, "failed");
+      assert.equal(appliedProfile, true);
+      assert.equal(replaceEmbeddingsCalled, true);
+      assert.equal(deletedPreviousFiles, true);
+      assert.deepEqual(
+        stages.map((s) => s.status),
+        ["embedding", "confirmed"],
+      );
+      assert.equal(stages.some((s) => s.status === "failed"), false);
+    } finally {
+      db.getDraftPayload = originals.getDraftPayload;
+      db.confirmDraftReplace = originals.confirmDraftReplace;
+      db.applyAcceptedProfile = originals.applyAcceptedProfile;
+      db.setStage = originals.setStage;
+      db.replaceEmbeddings = originals.replaceEmbeddings;
+      embeddings.generate = originals.generate;
+      storage.deleteMany = originals.deleteMany;
+    }
+  });
+});
+
+describe("enqueueResumeProcessing", () => {
+  it("returns false instead of silently queueing when resume processing is disabled", async () => {
+    const keys = [
+      "DATABASE_URL",
+      "SUPABASE_URL",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "JWT_SECRET",
+      "CORS_ORIGIN",
+      "SITE_URL",
+      "RESUME_PROCESSING_ENABLED",
+    ] as const;
+    const prev: Record<string, string | undefined> = {};
+    for (const key of keys) prev[key] = process.env[key];
+
+    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/db";
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "anon-key-for-tests";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key-for-tests";
+    process.env.JWT_SECRET = "x".repeat(32);
+    process.env.CORS_ORIGIN = "http://localhost:3000";
+    process.env.SITE_URL = "http://localhost:3000";
+    process.env.RESUME_PROCESSING_ENABLED = "false";
+
+    try {
+      resetEnvCache();
+      const scheduled = await enqueueResumeProcessing({
+        resumeId: "resume-1",
+        studentId: "student-1",
+        filePath: "resumes/student-1/pending/resume.pdf",
+        fileName: "resume.pdf",
+      });
+      assert.equal(scheduled, false);
+    } finally {
+      for (const key of keys) {
+        if (prev[key] === undefined) delete process.env[key];
+        else process.env[key] = prev[key];
+      }
+      resetEnvCache();
+    }
   });
 });
 
