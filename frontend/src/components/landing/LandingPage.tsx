@@ -9,6 +9,7 @@ import {
   Shield,
   FolderOpen,
   ArrowRight,
+  CheckCircle2,
 } from "lucide-react";
 import { Navbar, Footer } from "@/components/ui";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { StudentLinkLogo } from "@/components/brand/StudentLinkLogo";
 import {
   studentLink,
   landingFeatures,
+  careerFairChecklist,
   howItWorks,
   faqs,
 } from "@/data/studentlink";
@@ -148,6 +150,52 @@ export function LandingPage() {
                 </Card>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* Career Fair */}
+      <section id="career-fair" className="border-y border-border bg-surface/30 px-4 py-20 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+          <div>
+            <Badge variant="secondary">Career fair mode</Badge>
+            <h2 className="mt-4 text-3xl font-bold tracking-tight">
+              Walk into every employer conversation prepared
+            </h2>
+            <p className="mt-4 text-muted-foreground">
+              StudentLink gives students a quick readiness path before events and a consistent
+              recruiter experience after every NFC tap.
+            </p>
+            <div className="mt-8 rounded-2xl border border-border bg-background p-6 shadow-card">
+              <p className="text-sm font-semibold text-muted-foreground">Event snapshot</p>
+              <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                {[
+                  { label: "Ready profiles", value: "94%" },
+                  { label: "Avg. tap-to-view", value: "<2s" },
+                  { label: "Follow-ups tracked", value: "1.8K" },
+                ].map((metric) => (
+                  <div key={metric.label}>
+                    <p className="text-2xl font-bold text-foreground">{metric.value}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{metric.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-4">
+            {careerFairChecklist.map((item) => (
+              <Card key={item.title} hover className="shadow-card">
+                <CardContent className="flex gap-4 p-6">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">{item.title}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">{item.description}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       </section>

@@ -12,6 +12,7 @@ export const studentLink = {
   nav: [
     { label: "How It Works", href: "#how-it-works" },
     { label: "Features", href: "#features" },
+    { label: "Career Fair", href: "#career-fair" },
     { label: "FAQ", href: "#faq" },
   ],
   cta: {
@@ -56,6 +57,24 @@ export const landingFeatures = [
     description:
       "Universities manage students, NFC card inventory, and analytics from a centralized dashboard.",
     icon: "admin" as const,
+  },
+];
+
+export const careerFairChecklist = [
+  {
+    title: "Profile readiness",
+    description:
+      "Students can confirm their resume, projects, and contact details are current before event doors open.",
+  },
+  {
+    title: "Recruiter handoff",
+    description:
+      "Every NFC tap opens the same polished profile, making follow-up simple after busy career fair conversations.",
+  },
+  {
+    title: "Engagement signals",
+    description:
+      "Post-event analytics help students see which employers viewed their profile and what to improve next.",
   },
 ];
 
