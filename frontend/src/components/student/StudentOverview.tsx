@@ -7,19 +7,30 @@ import {
   MessageSquare,
   ArrowRight,
   ExternalLink,
+  CheckCircle2,
+  Circle,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { StatCard } from "@/components/layout/StatCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SimpleBarChart } from "@/components/charts/SimpleBarChart";
+import { ProgressBar, SimpleBarChart } from "@/components/charts/SimpleBarChart";
 import { useStudentData } from "@/providers/student-data-provider";
+import {
+  deriveProfileCompleteness,
+  type StudentDashboardSectionId,
+} from "@/lib/profile-completeness";
 
-export function StudentOverview() {
+interface StudentOverviewProps {
+  onNavigate?: (id: StudentDashboardSectionId) => void;
+}
+
+export function StudentOverview({ onNavigate }: StudentOverviewProps) {
   const { data } = useStudentData();
   if (!data) return null;
   const { profile: currentStudent, stats: studentStats, analytics: analyticsData, nfcCard } = data;
+  const completeness = deriveProfileCompleteness(data);
   return (
     <div>
       <PageHeader
@@ -118,6 +129,71 @@ export function StudentOverview() {
         </Card>
         )}
       </div>
+
+      <Card className="mt-6 shadow-card">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle>Profile Completeness</CardTitle>
+            <CardDescription>
+              Complete these items to make your public profile recruiter-ready.
+            </CardDescription>
+          </div>
+          <Badge variant={completeness.percent === 100 ? "success" : "primary"}>
+            {completeness.percent}% complete
+          </Badge>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div>
+            <div className="mb-2 flex items-center justify-between text-sm">
+              <span className="font-medium text-foreground">
+                {completeness.completedCount} of {completeness.totalCount} complete
+              </span>
+              <span className="text-muted-foreground">
+                {completeness.totalCount - completeness.completedCount} remaining
+              </span>
+            </div>
+            <ProgressBar value={completeness.percent} />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {completeness.items.map((item) => {
+              const Icon = item.done ? CheckCircle2 : Circle;
+              return (
+                <div
+                  key={item.id}
+                  className="flex items-start justify-between gap-3 rounded-xl border border-border bg-surface/40 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <Icon
+                      className={
+                        item.done
+                          ? "mt-0.5 h-5 w-5 shrink-0 text-success"
+                          : "mt-0.5 h-5 w-5 shrink-0 text-muted-foreground"
+                      }
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{item.label}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                    </div>
+                  </div>
+                  {item.done ? (
+                    <Badge variant="success">Done</Badge>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => onNavigate?.(item.sectionId)}
+                    >
+                      Review
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="mt-6 shadow-card">
         <CardHeader className="flex flex-row items-center justify-between">

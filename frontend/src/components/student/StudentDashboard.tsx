@@ -47,7 +47,7 @@ function StudentDashboardInner() {
   const { data } = useStudentData();
 
   const modules: Record<string, React.ReactNode> = {
-    overview: <StudentOverview />,
+    overview: <StudentOverview onNavigate={setActiveId} />,
     profile: <StudentProfile />,
     resume: <StudentResume />,
     projects: <StudentProjects />,
