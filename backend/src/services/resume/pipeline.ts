@@ -137,6 +137,7 @@ export async function runIntelligentResumePipeline(data: ResumePipelineJobData):
 export async function markSkippedDraftAwaitingConfirm(
   resumeId: string,
   studentId: string,
+  message = "File saved without text extraction. Confirm to replace your active resume file.",
 ): Promise<void> {
   const empty = emptyIntelligentResumeData();
   await databaseManager.saveDraftExtraction({
@@ -149,7 +150,7 @@ export async function markSkippedDraftAwaitingConfirm(
       {
         code: "skipped_extraction",
         section: "summary",
-        message: "File saved without text extraction. Confirm to replace your active resume file.",
+        message,
         severity: "info",
         needsUserInput: false,
       },

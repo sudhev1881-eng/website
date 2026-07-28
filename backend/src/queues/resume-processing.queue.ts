@@ -19,6 +19,9 @@ const QUEUE_NAME = "resume-processing";
 
 type BullQueue = import("bullmq").Queue;
 type BullWorker = import("bullmq").Worker;
+export type ResumeEnqueueResult =
+  | { scheduled: true; mode: "bullmq" | "in-process"; fallbackFrom?: "bullmq" }
+  | { scheduled: false; mode: "disabled"; reason: "processing_disabled" };
 
 let queue: BullQueue | null = null;
 let worker: BullWorker | null = null;
@@ -51,24 +54,11 @@ export function getResumeProcessingMode(): typeof mode {
   return mode;
 }
 
-export async function enqueueResumeProcessing(data: ResumeProcessingJobData): Promise<void> {
-  if (!resumeProcessingEnabled()) {
-    logger.debug("Resume processing disabled; skipping enqueue", { resumeId: data.resumeId });
-    return;
-  }
-
-  if (mode === "bullmq" && queue) {
-    await queue.add("process-resume", data, {
-      attempts: 3,
-      backoff: { type: "exponential", delay: 2000 },
-      removeOnComplete: 100,
-      removeOnFail: 200,
-    });
-    logger.info("Resume job enqueued (BullMQ)", { resumeId: data.resumeId });
-    return;
-  }
-
-  // In-process fallback — same processor; failures mark status failed inside processResumeJob.
+function scheduleInProcess(
+  data: ResumeProcessingJobData,
+  fallbackFrom?: "bullmq",
+): Extract<ResumeEnqueueResult, { scheduled: true }> {
+  // Same processor as BullMQ; failures mark status failed inside processResumeJob.
   setImmediate(() => {
     processResumeJob(data).catch((err) => {
       logger.error("In-process resume job failed", {
@@ -77,7 +67,45 @@ export async function enqueueResumeProcessing(data: ResumeProcessingJobData): Pr
       });
     });
   });
-  logger.info("Resume job scheduled (in-process)", { resumeId: data.resumeId });
+  logger.info(
+    fallbackFrom
+      ? "Resume job scheduled (in-process fallback)"
+      : "Resume job scheduled (in-process)",
+    { resumeId: data.resumeId, fallbackFrom },
+  );
+  return fallbackFrom
+    ? { scheduled: true, mode: "in-process", fallbackFrom }
+    : { scheduled: true, mode: "in-process" };
+}
+
+export async function enqueueResumeProcessing(
+  data: ResumeProcessingJobData,
+): Promise<ResumeEnqueueResult> {
+  if (!resumeProcessingEnabled()) {
+    logger.debug("Resume processing disabled; skipping enqueue", { resumeId: data.resumeId });
+    return { scheduled: false, mode: "disabled", reason: "processing_disabled" };
+  }
+
+  if (mode === "bullmq" && queue) {
+    try {
+      await queue.add("process-resume", data, {
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      });
+      logger.info("Resume job enqueued (BullMQ)", { resumeId: data.resumeId });
+      return { scheduled: true, mode: "bullmq" };
+    } catch (err) {
+      logger.warn("BullMQ enqueue failed; falling back to in-process resume job", {
+        resumeId: data.resumeId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return scheduleInProcess(data, "bullmq");
+    }
+  }
+
+  return scheduleInProcess(data);
 }
 
 export async function startResumeProcessingWorker(): Promise<void> {

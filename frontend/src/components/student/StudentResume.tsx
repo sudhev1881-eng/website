@@ -329,10 +329,21 @@ function DraftReviewPanel({
 
   if (!data) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Draft is ready but has no extracted sections. You can still confirm to replace the file, or
-        discard.
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Draft is ready but has no extracted sections. You can still confirm to replace the file, or
+          discard it.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={busy} onClick={() => void confirm()}>
+            {busy ? <Spinner size="sm" /> : null}
+            Confirm & replace resume
+          </Button>
+          <Button variant="outline" disabled={busy} onClick={() => void reject()}>
+            Discard draft
+          </Button>
+        </div>
+      </div>
     );
   }
 
@@ -908,8 +919,8 @@ export function StudentResume() {
                 <>
                   {!requireConfirmation ? (
                     <p className="text-sm text-muted-foreground">
-                      We need a quick review before finishing. Confirm sections below to update your
-                      profile — common for scanned PDFs with little readable text.
+                      We need a quick review before finishing. Confirm the draft below to update your
+                      profile, or save just the resume file when no sections were extracted.
                     </p>
                   ) : null}
                   <DraftReviewPanel

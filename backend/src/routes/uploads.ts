@@ -118,15 +118,29 @@ uploadsRouter.post(
         buffer: file.buffer,
       });
 
+      let processingStatus = draft.processingStatus;
+      let processingStage = draft.processingStage;
+      let errorMessage = draft.errorMessage ?? null;
+
       if (draft.extractable) {
-        await enqueueResumeProcessing({
+        const enqueueResult = await enqueueResumeProcessing({
           resumeId: draft.resumeId,
           studentId,
           filePath: draft.filePath,
           fileName: draft.fileName,
         });
+        if (!enqueueResult.scheduled) {
+          const message =
+            "Resume processing is currently disabled. Confirm to save this resume file without extracted profile updates.";
+          await markSkippedDraftAwaitingConfirm(draft.resumeId, studentId, message);
+          processingStatus = "awaiting_confirmation";
+          processingStage = "awaiting_confirmation";
+          errorMessage = null;
+        }
       } else {
         await markSkippedDraftAwaitingConfirm(draft.resumeId, studentId);
+        processingStatus = "awaiting_confirmation";
+        processingStage = "awaiting_confirmation";
       }
 
       res.status(201).json({
@@ -137,10 +151,10 @@ uploadsRouter.post(
         uploadedAt: new Date().toISOString().split("T")[0],
         version: draft.version,
         downloadUrl: resolvePublicFileUrl(draft.filePath),
-        processingStatus: draft.extractable ? draft.processingStatus : "awaiting_confirmation",
-        processingStage: draft.extractable ? draft.processingStage : "awaiting_confirmation",
+        processingStatus,
+        processingStage,
         isDraft: true,
-        errorMessage: draft.errorMessage ?? null,
+        errorMessage,
         requireConfirmation: getEnv().RESUME_REQUIRE_CONFIRMATION,
       });
     } catch (err) {
