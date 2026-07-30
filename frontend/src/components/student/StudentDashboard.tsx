@@ -12,6 +12,7 @@ import {
   BarChart3,
   Nfc,
   Settings,
+  Target,
 } from "lucide-react";
 import { DashboardShell } from "@/components/layout/DashboardShell";
 import { RequireAuth } from "@/components/layout/RequireAuth";
@@ -19,6 +20,7 @@ import { StudentLinkLogo } from "@/components/brand/StudentLinkLogo";
 import { StudentDataProvider } from "@/providers/student-data-provider";
 import { useStudentData } from "@/providers/student-data-provider";
 import { StudentOverview } from "./StudentOverview";
+import { StudentReadiness } from "./StudentReadiness";
 import { StudentProfile } from "./StudentProfile";
 import { StudentResume } from "./StudentResume";
 import { StudentProjects } from "./StudentProjects";
@@ -31,6 +33,7 @@ import { StudentSettings } from "./StudentSettings";
 
 const navItems = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "readiness", label: "Career Readiness", icon: Target },
   { id: "profile", label: "My Profile", icon: User },
   { id: "resume", label: "Resume", icon: FileText },
   { id: "projects", label: "Projects", icon: FolderOpen },
@@ -48,6 +51,7 @@ function StudentDashboardInner() {
 
   const modules: Record<string, React.ReactNode> = {
     overview: <StudentOverview />,
+    readiness: <StudentReadiness />,
     profile: <StudentProfile />,
     resume: <StudentResume />,
     projects: <StudentProjects />,
