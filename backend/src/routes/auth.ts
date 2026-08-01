@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { query, withTransaction } from "../db/pool.js";
+import { studentLoginAccess } from "../lib/student-access.js";
 import { signToken, signClaimToken, verifyClaimToken, type AuthRequest } from "../middleware/auth.js";
 import { requireAuth } from "../middleware/supabase-auth.js";
 import { authRateLimit, sensitiveRateLimit } from "../middleware/security.js";
@@ -178,24 +179,12 @@ authRouter.post("/login", authRateLimit, async (req, res) => {
         `SELECT id, status FROM students WHERE user_id = $1`,
         [user.id],
       );
-      const student = studentResult.rows[0];
-      if (!student) {
-        res.status(403).json({ error: "Student profile not found" });
+      const access = studentLoginAccess(studentResult.rows[0]);
+      if (!access.ok) {
+        res.status(access.status).json({ error: access.error });
         return;
       }
-      if (student.status === "pending") {
-        res.status(403).json({
-          error: "Your account is pending admin approval. Please wait to be approved.",
-        });
-        return;
-      }
-      if (student.status === "inactive") {
-        res.status(403).json({
-          error: "Your account was declined or deactivated. Contact your administrator.",
-        });
-        return;
-      }
-      studentId = student.id;
+      studentId = access.studentId;
     }
 
     const token = signToken({
@@ -247,11 +236,16 @@ authRouter.post("/google", sensitiveRateLimit, async (req, res) => {
 
       let studentId: string | undefined;
       if (user.role === "student") {
-        const studentResult = await query<{ id: string }>(
-          `SELECT id FROM students WHERE user_id = $1`,
+        const studentResult = await query<{ id: string; status: string }>(
+          `SELECT id, status FROM students WHERE user_id = $1`,
           [user.id],
         );
-        studentId = studentResult.rows[0]?.id;
+        const access = studentLoginAccess(studentResult.rows[0]);
+        if (!access.ok) {
+          res.status(access.status).json({ error: access.error });
+          return;
+        }
+        studentId = access.studentId;
       }
 
       const token = signToken({
@@ -431,11 +425,21 @@ authRouter.post("/supabase/sync", sensitiveRateLimit, async (req, res) => {
 
     let studentId: string | undefined;
     if (role === "student") {
-      const studentResult = await query<{ id: string }>(
-        `SELECT id FROM students WHERE user_id = $1`,
+      const studentResult = await query<{ id: string; status: string }>(
+        `SELECT id, status FROM students WHERE user_id = $1`,
         [userId],
       );
-      studentId = studentResult.rows[0]?.id;
+      const student = studentResult.rows[0];
+      // No linked student yet → allow claim flow (token without studentId).
+      // Linked but pending/inactive → block session issuance (same as password login).
+      if (student) {
+        const access = studentLoginAccess(student);
+        if (!access.ok) {
+          res.status(access.status).json({ error: access.error });
+          return;
+        }
+        studentId = access.studentId;
+      }
     }
 
     const token = signToken({

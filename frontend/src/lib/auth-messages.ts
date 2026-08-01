@@ -24,6 +24,14 @@ export function friendlyAuthError(raw: string | null | undefined): string {
     return SIGNIN_INCOMPLETE_MESSAGE;
   }
 
+  if (lower.includes("pending admin approval") || lower.includes("pending approval")) {
+    return "Your account is pending admin approval. Please wait to be approved.";
+  }
+
+  if (lower.includes("declined or deactivated") || lower.includes("not active")) {
+    return "Your account was declined or deactivated. Contact your administrator.";
+  }
+
   if (
     lower.includes("no matching student") ||
     lower.includes("not match") ||

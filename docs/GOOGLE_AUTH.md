@@ -39,6 +39,16 @@ GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
 
 Name is stored in uppercase. Student appears as **unclaimed** in admin until they complete Google + name claim.
 
+## Approval gate
+
+Self-registered students start as `pending` and must be approved by an admin before any sign-in method issues a session JWT. This applies equally to:
+
+- `POST /api/auth/login` (email/password)
+- `POST /api/auth/google` (existing Google-linked account)
+- `POST /api/auth/supabase/sync` (Supabase Google session sync)
+
+Pending or inactive linked student profiles receive `403` with an approval/deactivation message — OAuth must not bypass the password-login policy. Pre-register + name claim (`google/claim`, `supabase/claim`) still activates the matched profile on first successful claim.
+
 ## Security note
 
 Name-only matching is convenient for university rollout but not highly secure — anyone who knows a name could try to claim it. For production consider also:
