@@ -198,4 +198,5 @@ if __name__ == "__main__":
     import uvicorn
 
     settings = Settings()
-    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=True)
+    reload_enabled = os.getenv("CSI_RELOAD", "false").lower() == "true"
+    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=reload_enabled)
