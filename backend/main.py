@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -147,11 +148,39 @@ async def prediction_loop(app_state: AppState) -> None:
 
 def build_app() -> FastAPI:
     settings = Settings()
+    root = Path(__file__).resolve().parent.parent
+    database_path = settings.database_path
+    model_path = settings.model_path
+    if not Path(database_path).is_absolute():
+        database_path = str(root / database_path)
+    if not Path(model_path).is_absolute():
+        model_path = str(root / model_path)
+    sensor_state = AppState(
+        settings=settings,
+        database=SensorDatabase(database_path),
+        model=PresenceModel(model_path),
+        collector=create_collector(settings),
+    )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.sensor_state = sensor_state
+        sensor_state.task = asyncio.create_task(prediction_loop(sensor_state))
+        logger.info("Wi-Fi CSI service started", extra={"room_id": settings.room_id, "mode": settings.device_mode})
+        try:
+            yield
+        finally:
+            if sensor_state.task:
+                sensor_state.task.cancel()
+            await sensor_state.collector.disconnect()
+
     app = FastAPI(
         title="Wi-Fi CSI Presence Detection API",
         description="Privacy-preserving room occupancy sensing from CSI, with simulated CSI mode for development.",
         version="0.1.0",
+        lifespan=lifespan,
     )
+    app.state.sensor_state = sensor_state
     origins = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
     app.add_middleware(
         CORSMiddleware,
@@ -160,33 +189,7 @@ def build_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    root = Path(__file__).resolve().parent.parent
-    database_path = settings.database_path
-    model_path = settings.model_path
-    if not Path(database_path).is_absolute():
-        database_path = str(root / database_path)
-    if not Path(model_path).is_absolute():
-        model_path = str(root / model_path)
-    app.state.sensor_state = AppState(
-        settings=settings,
-        database=SensorDatabase(database_path),
-        model=PresenceModel(model_path),
-        collector=create_collector(settings),
-    )
     app.include_router(router)
-
-    @app.on_event("startup")
-    async def startup() -> None:
-        app_state: AppState = app.state.sensor_state
-        app_state.task = asyncio.create_task(prediction_loop(app_state))
-        logger.info("Wi-Fi CSI service started", extra={"room_id": settings.room_id, "mode": settings.device_mode})
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        app_state: AppState = app.state.sensor_state
-        if app_state.task:
-            app_state.task.cancel()
-        await app_state.collector.disconnect()
 
     return app
 
