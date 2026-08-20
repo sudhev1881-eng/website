@@ -42,6 +42,10 @@ yarn-error.log*
 
 backend/uploads/
 backend/dist/
+backend/database/*.db
+backend/database/*.db-*
+backend/models/*.joblib
+backend/.venv/
 frontend/.next/
 *.tsbuildinfo
 next-env.d.ts

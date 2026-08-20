@@ -7,6 +7,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseHost = supabaseUrl ? new URL(supabaseUrl).hostname : undefined;
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 const apiOrigin = apiUrl.replace(/\/api$/, "");
+const csiApiUrl = process.env.NEXT_PUBLIC_CSI_API_URL ?? "http://localhost:8000";
+const csiOrigin = csiApiUrl.replace(/\/$/, "");
+const csiWsOrigin = csiOrigin.replace(/^http/, "ws");
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -17,7 +20,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob:${supabaseHost ? ` https://${supabaseHost}` : ""}`,
   "font-src 'self' data:",
-  `connect-src 'self' ${apiOrigin}${supabaseHost ? ` https://${supabaseHost} wss://${supabaseHost}` : ""}${isDev ? " ws:" : ""}`,
+  `connect-src 'self' ${apiOrigin} ${csiOrigin} ${csiWsOrigin}${supabaseHost ? ` https://${supabaseHost} wss://${supabaseHost}` : ""}${isDev ? " ws:" : ""}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
