@@ -46,3 +46,29 @@ Status endpoint returns `mode: "hardware" | "stub"` and the connected reader nam
 ## Production (Ubuntu server)
 
 Run as a systemd service or via Docker on the same host as Next.js and PostgreSQL. The NFC reader must be plugged into **this machine's USB port**.
+
+## Wi-Fi CSI Python service
+
+The Wi-Fi sensing prototype adds a separate Python FastAPI service alongside the existing Node API. It is CSI-first and keeps hardware-specific code behind `backend/csi/CSICollector`.
+
+### Run in simulated CSI mode
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
+
+The service starts on `http://localhost:8000`, seeds synthetic CSI training samples on first run, trains a baseline Random Forest model, and streams predictions on `ws://localhost:8000/ws/status`.
+
+### Hardware mode
+
+Set `CSI_DEVICE_MODE=jsonl` and `CSI_JSONL_SOURCE_PATH=/path/to/csi.jsonl`. The JSONL bridge should output one measurement per line:
+
+```json
+{"device_id":"esp32-1","room_id":"lab-1","amplitude":[42.1,41.8],"phase":[0.1,0.2],"rssi":-51}
+```
+
+RSSI is recorded as metadata only. Detection features are extracted from CSI amplitude and phase.
