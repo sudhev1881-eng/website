@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="700" viewBox="0 0 900 700">
+  <rect width="900" height="700" fill="#0a0a0a"/>
+  <rect x="80" y="120" width="520" height="340" rx="12" fill="#151515" stroke="#2a2a2a"/>
+  <rect x="100" y="140" width="480" height="280" rx="4" fill="#111"/>
+  <text x="160" y="290" fill="#e11d2e" font-family="Arial" font-size="22" font-weight="700">WE BUILD DIGITAL</text>
+  <text x="160" y="325" fill="#fff" font-family="Arial" font-size="22" font-weight="700">EXPERIENCES.</text>
+  <ellipse cx="700" cy="420" rx="90" ry="40" fill="#1a1a1a"/>
+  <rect x="640" y="300" width="120" height="130" rx="60" fill="#111" stroke="#e11d2e" stroke-width="3"/>
+  <text x="682" y="385" fill="#e11d2e" font-family="Georgia" font-size="42" font-weight="700">S</text>
+  <rect y="560" width="900" height="140" fill="#121212"/>
+</svg>

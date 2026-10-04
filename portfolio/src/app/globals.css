@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #050505;
+  --bg-elevated: #0d0d0d;
+  --bg-soft: #141414;
+  --red: #e11d2e;
+  --red-deep: #9f1239;
+  --red-glow: rgba(225, 29, 46, 0.35);
+  --text: #f5f5f5;
+  --text-muted: #a3a3a3;
+  --border: rgba(255, 255, 255, 0.08);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-script: var(--font-script);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-soft: var(--bg-soft);
+  --color-accent: var(--red);
+  --color-accent-deep: var(--red-deep);
+  --color-foreground: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-script: var(--font-script);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), sans-serif;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--red);
+  color: white;
+}
+
+.bg-atmosphere {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(225, 29, 46, 0.22), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 85% 20%, rgba(159, 18, 57, 0.18), transparent 50%),
+    radial-gradient(ellipse 35% 25% at 10% 40%, rgba(225, 29, 46, 0.1), transparent 45%),
+    #050505;
+}
+
+.portfolio-watermark {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.85;
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(225, 29, 46, 0.55);
+  user-select: none;
+  pointer-events: none;
+}
+
+.skill-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: #1a1a1a;
+  color: var(--text);
+  padding: 0.55rem 0.95rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  transition: border-color 0.25s ease, background 0.25s ease, color 0.25s ease;
+}
+
+.skill-pill:hover {
+  border-color: rgba(225, 29, 46, 0.55);
+  background: rgba(225, 29, 46, 0.12);
+  color: #fff;
+}
+
+.project-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  transition: border-color 0.3s ease, transform 0.35s ease;
+}
+
+.project-card:hover {
+  border-color: rgba(225, 29, 46, 0.45);
+  transform: translateY(-4px);
+}
+
+.cta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: white;
+  padding: 0.85rem 1.4rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.cta-pill:hover {
+  background: #c41222;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 30px var(--red-glow);
+}
+
+.cta-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  padding: 0.85rem 1.4rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: border-color 0.25s ease, background 0.25s ease;
+}
+
+.cta-outline:hover {
+  border-color: var(--red);
+  background: rgba(225, 29, 46, 0.1);
+}
