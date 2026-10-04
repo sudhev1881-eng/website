@@ -7,185 +7,184 @@ import {
   useScroll,
   useTransform,
 } from "framer-motion";
-import { Globe, ArrowDown } from "lucide-react";
+import { Globe } from "lucide-react";
 import { site } from "@/data/site";
-import { FadeIn } from "./Motion";
+
+function Sparkle({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="currentColor"
+      aria-hidden
+    >
+      <path d="M12 1.5 13.8 9.2 21.5 11 13.8 12.8 12 20.5 10.2 12.8 2.5 11l7.7-1.8L12 1.5Z" />
+    </svg>
+  );
+}
 
 export function Hero() {
   const reduce = useReducedMotion();
   const { scrollY } = useScroll();
-  const bgY = useTransform(scrollY, [0, 700], [0, 160]);
-  const bgScale = useTransform(scrollY, [0, 700], [1.05, 1.18]);
-  const contentY = useTransform(scrollY, [0, 500], [0, 80]);
-  const contentOpacity = useTransform(scrollY, [0, 420], [1, 0.15]);
-  const watermarkY = useTransform(scrollY, [0, 600], [0, -60]);
+  const watermarkY = useTransform(scrollY, [0, 600], [0, -70]);
+  const portraitY = useTransform(scrollY, [0, 600], [0, 90]);
+  const portraitScale = useTransform(scrollY, [0, 600], [1, 1.06]);
 
   return (
-    <section className="relative min-h-[100svh] overflow-hidden">
-      {/* Full-bleed portrait background */}
+    <section className="hero-stage relative min-h-[100svh] overflow-hidden px-5 pb-12 pt-6 md:px-10 lg:px-14">
+      {/* Layer 1 — PORTFOLIO watermark */}
       <motion.div
-        className="absolute inset-0 z-0"
-        style={reduce ? undefined : { y: bgY, scale: bgScale }}
+        className="pointer-events-none absolute inset-x-0 top-[7%] z-0 select-none md:top-[4%]"
+        style={reduce ? undefined : { y: watermarkY }}
+        aria-hidden
       >
-        <Image
-          src="/images/portrait.png"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-[68%_center] md:object-[72%_center]"
-          aria-hidden
-        />
-        <div className="hero-overlay absolute inset-0" />
+        <p className="portfolio-watermark mx-auto text-center text-[22vw] leading-none md:text-[16.5vw]">
+          PORTFOLIO
+        </p>
       </motion.div>
 
-      <div className="relative z-20 flex min-h-[100svh] flex-col px-5 pb-10 pt-6 md:px-10 lg:px-14">
-        <div className="mx-auto flex w-full max-w-7xl items-start justify-between gap-4 text-[0.68rem] font-medium uppercase tracking-[0.18em] text-white/80 md:text-xs">
+      {/* Layer 2 — centered portrait */}
+      <motion.div
+        className="pointer-events-none absolute inset-x-0 top-[12%] z-[5] mx-auto flex justify-center md:top-[6%] lg:top-[2%]"
+        style={reduce ? undefined : { y: portraitY, scale: portraitScale }}
+        initial={reduce ? false : { opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
+      >
+        <div className="hero-portrait-glow relative h-[58vh] w-[min(92vw,560px)] md:h-[78vh] md:w-[min(52vw,640px)]">
+          <Image
+            src="/images/portrait.png"
+            alt={`${site.name} portrait`}
+            fill
+            priority
+            sizes="(max-width: 768px) 92vw, 640px"
+            className="object-contain object-bottom"
+          />
+        </div>
+      </motion.div>
+
+      {/* Soft bottom fade so lower sections separate cleanly */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-28 bg-gradient-to-t from-[var(--bg)] to-transparent" />
+
+      {/* Top meta row */}
+      <div className="relative z-20 mx-auto flex max-w-7xl items-start justify-between gap-4 text-[0.68rem] font-medium uppercase tracking-[0.18em] md:text-xs">
+        <motion.p
+          className="flex flex-wrap gap-x-2"
+          initial={reduce ? false : { opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, delay: 0.1 }}
+        >
+          <span className="text-[var(--red)]">Computer Engineering</span>
+          <span className="text-white/75">/ Developer</span>
+        </motion.p>
+        <motion.p
+          className="flex items-center gap-2 text-right text-white/85"
+          initial={reduce ? false : { opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, delay: 0.18 }}
+        >
+          {site.available}
+          <Sparkle className="h-3.5 w-3.5 text-[var(--red)]" />
+        </motion.p>
+      </div>
+
+      {/* Foreground content */}
+      <div className="relative z-20 mx-auto grid min-h-[calc(100svh-4.5rem)] max-w-7xl grid-cols-1 items-end gap-8 pt-[52vh] md:pt-[58vh] lg:grid-cols-[1fr_auto_1fr] lg:items-center lg:gap-6 lg:pt-8">
+        {/* Left copy */}
+        <div className="max-w-md lg:pb-8 lg:pt-24">
           <motion.p
-            initial={reduce ? false : { opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
+            className="font-[family-name:var(--font-script)] text-3xl text-white md:text-[2.35rem]"
+            initial={reduce ? false : { opacity: 0, x: -24 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 0.25 }}
           >
-            Computer Engineering / Developer
+            Hello, I&apos;m
           </motion.p>
-          <motion.p
-            className="flex items-center gap-2 text-right"
-            initial={reduce ? false : { opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
+
+          <motion.h1
+            className="mt-1 font-[family-name:var(--font-display)] text-[3.1rem] font-extrabold uppercase leading-[0.9] tracking-[-0.03em] text-white sm:text-6xl md:text-7xl"
+            initial={reduce ? false : { opacity: 0, x: -28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8, delay: 0.32 }}
           >
-            <span className="inline-block h-1.5 w-1.5 animate-pulse rotate-45 bg-[var(--red)]" />
-            {site.available}
+            {site.name.split(" ").map((part) => (
+              <span key={part} className="block">
+                {part}
+              </span>
+            ))}
+          </motion.h1>
+
+          <motion.p
+            className="mt-4 font-[family-name:var(--font-display)] text-sm font-bold uppercase tracking-[0.14em] text-[var(--red)] md:text-[0.95rem]"
+            initial={reduce ? false : { opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.65, delay: 0.42 }}
+          >
+            {site.title}
+          </motion.p>
+
+          <motion.p
+            className="mt-4 max-w-sm text-sm leading-relaxed text-white/70"
+            initial={reduce ? false : { opacity: 0, x: -16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.65, delay: 0.5 }}
+          >
+            {site.bio}
+          </motion.p>
+
+          <motion.p
+            className="mt-8 flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/70"
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.62 }}
+          >
+            <Globe className="h-3.5 w-3.5 text-[var(--red)]" />
+            {site.availableLocation}
           </motion.p>
         </div>
 
-        <FadeIn className="pointer-events-none absolute inset-x-0 top-[10%] z-10 select-none overflow-hidden px-2 md:top-[8%]">
-          <motion.p
-            className="portfolio-watermark mx-auto max-w-[100vw] text-center text-[19vw] md:text-[15.5vw]"
-            style={reduce ? undefined : { y: watermarkY }}
+        {/* Spacer keeps portrait visually centered on desktop */}
+        <div className="hidden lg:block lg:h-[70vh] lg:w-[min(36vw,420px)]" />
+
+        {/* Right: badge + vertical stats */}
+        <div className="flex flex-col items-start gap-10 pb-2 lg:items-end lg:pb-8 lg:pt-28">
+          <motion.div
+            className="flex max-w-[15rem] items-center gap-3 lg:text-right"
+            initial={reduce ? false : { opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, delay: 0.45 }}
           >
-            PORTFOLIO
-          </motion.p>
-        </FadeIn>
-
-        <motion.div
-          className="relative z-20 mx-auto mt-auto flex w-full max-w-7xl flex-col gap-10 pb-4 pt-28 lg:flex-row lg:items-end lg:justify-between lg:gap-16"
-          style={reduce ? undefined : { y: contentY, opacity: contentOpacity }}
-        >
-          <div className="max-w-xl">
-            <motion.p
-              className="font-[family-name:var(--font-script)] text-3xl text-white md:text-4xl"
-              initial={reduce ? false : { opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.75, delay: 0.2 }}
-            >
-              Hello, I&apos;m
-            </motion.p>
-
-            <motion.h1
-              className="mt-2 font-[family-name:var(--font-display)] text-5xl font-extrabold uppercase leading-[0.92] tracking-[-0.03em] text-white sm:text-6xl md:text-7xl lg:text-8xl"
-              initial={reduce ? false : { opacity: 0, y: 28 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.85, delay: 0.3 }}
-            >
-              {site.name}
-            </motion.h1>
-
-            <motion.p
-              className="mt-4 font-[family-name:var(--font-display)] text-sm font-bold uppercase tracking-[0.14em] text-[var(--red)] md:text-base"
-              initial={reduce ? false : { opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.4 }}
-            >
-              {site.title}
-            </motion.p>
-
-            <motion.p
-              className="mt-5 max-w-md text-sm leading-relaxed text-white/75 md:text-[0.95rem]"
-              initial={reduce ? false : { opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.5 }}
-            >
-              {site.bio}
-            </motion.p>
-
-            <motion.div
-              className="mt-8 flex flex-wrap items-center gap-3"
-              initial={reduce ? false : { opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.6 }}
-            >
-              <motion.a
-                href="#projects"
-                className="cta-pill"
-                whileHover={reduce ? undefined : { scale: 1.04, y: -2 }}
-                whileTap={reduce ? undefined : { scale: 0.98 }}
-              >
-                View Projects
-              </motion.a>
-              <motion.a
-                href="#contact"
-                className="cta-outline"
-                whileHover={reduce ? undefined : { scale: 1.03, y: -1 }}
-                whileTap={reduce ? undefined : { scale: 0.98 }}
-              >
-                Let&apos;s Talk
-              </motion.a>
-            </motion.div>
-
-            <motion.p
-              className="mt-8 flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-white/70"
-              initial={reduce ? false : { opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.7, delay: 0.75 }}
-            >
-              <Globe className="h-3.5 w-3.5 text-[var(--red)]" />
-              {site.availableLocation}
-            </motion.p>
-          </div>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/25">
+              <Sparkle className="h-4 w-4 text-[var(--red)]" />
+            </span>
+            <p className="text-xs leading-relaxed text-white/75 lg:text-left">
+              {site.heroBadge}
+            </p>
+          </motion.div>
 
           <motion.div
-            className="grid w-full max-w-md grid-cols-3 gap-4 border-t border-white/15 pt-6 lg:max-w-lg"
-            initial={reduce ? false : { opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.75, delay: 0.7 }}
+            className="flex w-full max-w-[14rem] flex-col gap-6 lg:items-start"
+            initial={reduce ? false : { opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.75, delay: 0.55 }}
           >
             {site.stats.map((stat, i) => (
               <motion.div
                 key={stat.label}
-                className="text-left"
                 initial={reduce ? false : { opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, delay: 0.78 + i * 0.08 }}
+                transition={{ duration: 0.5, delay: 0.62 + i * 0.1 }}
               >
-                <p className="font-[family-name:var(--font-display)] text-3xl font-extrabold text-[var(--red)] md:text-5xl">
+                <p className="font-[family-name:var(--font-display)] text-4xl font-extrabold leading-none text-[var(--red)] md:text-5xl">
                   {stat.value}
                 </p>
-                <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-white/70 md:text-xs">
+                <p className="mt-1 text-[0.68rem] uppercase tracking-[0.16em] text-white/80">
                   {stat.label}
                 </p>
               </motion.div>
             ))}
           </motion.div>
-        </motion.div>
-
-        <motion.a
-          href="#projects"
-          className="absolute bottom-5 left-1/2 z-30 hidden -translate-x-1/2 flex-col items-center gap-2 text-[0.65rem] uppercase tracking-[0.2em] text-white/55 md:flex"
-          initial={reduce ? false : { opacity: 0 }}
-          animate={reduce ? undefined : { opacity: 1, y: [0, 6, 0] }}
-          transition={
-            reduce
-              ? undefined
-              : {
-                  opacity: { delay: 1.1, duration: 0.6 },
-                  y: { repeat: Infinity, duration: 1.8, ease: "easeInOut" },
-                }
-          }
-        >
-          Scroll
-          <ArrowDown className="h-3.5 w-3.5 text-[var(--red)]" />
-        </motion.a>
+        </div>
       </div>
     </section>
   );

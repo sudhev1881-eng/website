@@ -3,8 +3,9 @@ export const site = {
   firstName: "Sudhev",
   title: "Computer Engineering Student & Developer",
   tagline: "Computer Engineering Student | AI, Cybersecurity & Web Development",
-  available: "Available for freelance & collaborations",
+  available: "Available for freelance",
   availableLocation: "Available Worldwide",
+  heroBadge: "Turning complex ideas into simple, useful experiences.",
   bio: "Computer Engineering student at NJIT passionate about building modern web experiences and practical software solutions. I’m exploring AI, cybersecurity, and multi-agent development while turning ideas into useful products.",
   quote: "I like turning complex ideas into simple, useful experiences.",
   education: {
