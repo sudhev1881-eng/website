@@ -1,0 +1,268 @@
+@import "tailwindcss";
+@import "lenis/dist/lenis.css";
+
+:root {
+  --bg: #050505;
+  --bg-elevated: #0d0d0d;
+  --bg-soft: #141414;
+  --red: #e11d2e;
+  --red-deep: #9f1239;
+  --red-glow: rgba(225, 29, 46, 0.35);
+  --text: #f5f5f5;
+  --text-muted: #a3a3a3;
+  --border: rgba(255, 255, 255, 0.08);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-script: var(--font-script);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-soft: var(--bg-soft);
+  --color-accent: var(--red);
+  --color-accent-deep: var(--red-deep);
+  --color-foreground: var(--text);
+  --color-muted: var(--text-muted);
+  --color-border: var(--border);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-script: var(--font-script);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: auto;
+  scroll-padding-top: 1.5rem;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), sans-serif;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--red);
+  color: white;
+}
+
+.hero-stage {
+  background:
+    radial-gradient(ellipse 50% 42% at 50% 32%, rgba(225, 29, 46, 0.2), transparent 62%),
+    radial-gradient(ellipse 35% 28% at 18% 78%, rgba(225, 29, 46, 0.07), transparent 55%),
+    #050505;
+}
+
+.hero-smoke {
+  background:
+    radial-gradient(ellipse 42% 50% at 50% 40%, rgba(225, 29, 46, 0.18), transparent 70%),
+    radial-gradient(ellipse 28% 35% at 38% 48%, rgba(127, 29, 29, 0.16), transparent 65%),
+    radial-gradient(ellipse 28% 35% at 62% 48%, rgba(127, 29, 29, 0.16), transparent 65%);
+  filter: blur(8px);
+}
+
+.hero-portrait-glow {
+  position: absolute;
+  inset: 8% 10% 18%;
+  background: radial-gradient(
+    ellipse at 50% 42%,
+    rgba(225, 29, 46, 0.5),
+    rgba(225, 29, 46, 0.14) 48%,
+    transparent 74%
+  );
+  filter: blur(52px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-portrait-img {
+  display: block;
+  /* Black photo field melts into the page; subject + red smoke remain */
+  mix-blend-mode: lighten;
+  filter: contrast(1.08) saturate(1.12);
+  -webkit-mask-image: radial-gradient(
+    ellipse 72% 78% at 50% 42%,
+    #000 0%,
+    #000 38%,
+    rgba(0, 0, 0, 0.75) 58%,
+    rgba(0, 0, 0, 0.25) 74%,
+    transparent 88%
+  );
+  mask-image: radial-gradient(
+    ellipse 72% 78% at 50% 42%,
+    #000 0%,
+    #000 38%,
+    rgba(0, 0, 0, 0.75) 58%,
+    rgba(0, 0, 0, 0.25) 74%,
+    transparent 88%
+  );
+}
+
+.hero-portrait-fade {
+  position: absolute;
+  inset: -2% -4%;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(
+      to bottom,
+      rgb(5 5 5 / 0) 0%,
+      rgb(5 5 5 / 0) 42%,
+      rgb(5 5 5 / 0.35) 68%,
+      rgb(5 5 5 / 0.85) 86%,
+      #050505 100%
+    ),
+    radial-gradient(
+      ellipse 85% 75% at 50% 40%,
+      rgb(5 5 5 / 0) 30%,
+      rgb(5 5 5 / 0.2) 62%,
+      rgb(5 5 5 / 0.75) 88%,
+      #050505 100%
+    );
+}
+
+/* Dim letters only behind the head so subject nests in the word */
+.portfolio-watermark-wrap {
+  -webkit-mask-image: radial-gradient(
+    ellipse 32% 60% at 50% 52%,
+    transparent 0%,
+    transparent 30%,
+    rgb(0 0 0 / 0.55) 55%,
+    #000 80%
+  );
+  mask-image: radial-gradient(
+    ellipse 32% 60% at 50% 52%,
+    transparent 0%,
+    transparent 30%,
+    rgb(0 0 0 / 0.55) 55%,
+    #000 80%
+  );
+}
+
+.portfolio-watermark {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.76;
+  white-space: nowrap;
+  width: 104%;
+  max-width: none;
+  text-align: center;
+  font-size: clamp(5.5rem, 21vw, 17rem);
+  color: #ef222f;
+  opacity: 0.95;
+  user-select: none;
+  pointer-events: none;
+  text-shadow: 0 0 48px rgba(225, 29, 46, 0.35);
+}
+
+.skill-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  background: #1a1a1a;
+  color: var(--text);
+  padding: 0.55rem 0.95rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  transition: border-color 0.25s ease, background 0.25s ease, color 0.25s ease;
+  will-change: transform;
+}
+
+.skill-pill:hover {
+  border-color: rgba(225, 29, 46, 0.55);
+  background: rgba(225, 29, 46, 0.12);
+  color: #fff;
+}
+
+.project-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  transition: border-color 0.3s ease, box-shadow 0.35s ease;
+  will-change: transform;
+}
+
+.project-card:hover {
+  border-color: rgba(225, 29, 46, 0.45);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(225, 29, 46, 0.08);
+}
+
+.cta-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: white;
+  padding: 0.85rem 1.4rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+  will-change: transform;
+}
+
+.cta-pill:hover {
+  background: #c41222;
+  box-shadow: 0 10px 30px var(--red-glow);
+}
+
+.cta-outline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  padding: 0.85rem 1.4rem;
+  font-family: var(--font-display), sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-decoration: none;
+  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.25);
+  transition: border-color 0.25s ease, background 0.25s ease;
+  will-change: transform;
+}
+
+.cta-outline:hover {
+  border-color: var(--red);
+  background: rgba(225, 29, 46, 0.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
