@@ -81,64 +81,62 @@ body {
   filter: blur(8px);
 }
 
-.hero-portrait-shell {
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 50%,
-    rgba(0, 0, 0, 0.55) 72%,
-    transparent 96%
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    #000 0%,
-    #000 50%,
-    rgba(0, 0, 0, 0.55) 72%,
-    transparent 96%
-  );
-}
-
 .hero-portrait-glow {
   position: absolute;
-  inset: 10% 12% 20%;
+  inset: 8% 10% 18%;
   background: radial-gradient(
-    ellipse at 50% 40%,
-    rgba(225, 29, 46, 0.45),
-    rgba(225, 29, 46, 0.12) 50%,
-    transparent 72%
+    ellipse at 50% 42%,
+    rgba(225, 29, 46, 0.5),
+    rgba(225, 29, 46, 0.14) 48%,
+    transparent 74%
   );
-  filter: blur(48px);
+  filter: blur(52px);
   z-index: 0;
   pointer-events: none;
 }
 
 .hero-portrait-img {
-  /* Black in the photo becomes the page; red smoke + subject stay */
+  display: block;
+  /* Black photo field melts into the page; subject + red smoke remain */
   mix-blend-mode: lighten;
-  filter: contrast(1.06) saturate(1.1);
+  filter: contrast(1.08) saturate(1.12);
+  -webkit-mask-image: radial-gradient(
+    ellipse 72% 78% at 50% 42%,
+    #000 0%,
+    #000 38%,
+    rgba(0, 0, 0, 0.75) 58%,
+    rgba(0, 0, 0, 0.25) 74%,
+    transparent 88%
+  );
+  mask-image: radial-gradient(
+    ellipse 72% 78% at 50% 42%,
+    #000 0%,
+    #000 38%,
+    rgba(0, 0, 0, 0.75) 58%,
+    rgba(0, 0, 0, 0.25) 74%,
+    transparent 88%
+  );
 }
 
 .hero-portrait-fade {
   position: absolute;
-  inset: 0;
+  inset: -2% -4%;
   z-index: 2;
   pointer-events: none;
   background:
     linear-gradient(
       to bottom,
       rgb(5 5 5 / 0) 0%,
-      rgb(5 5 5 / 0) 55%,
-      rgb(5 5 5 / 0.45) 75%,
-      rgb(5 5 5 / 0.92) 90%,
+      rgb(5 5 5 / 0) 42%,
+      rgb(5 5 5 / 0.35) 68%,
+      rgb(5 5 5 / 0.85) 86%,
       #050505 100%
     ),
-    linear-gradient(
-      to right,
-      #050505 0%,
-      rgb(5 5 5 / 0.2) 12%,
-      rgb(5 5 5 / 0) 28%,
-      rgb(5 5 5 / 0) 72%,
-      rgb(5 5 5 / 0.2) 88%,
+    radial-gradient(
+      ellipse 85% 75% at 50% 40%,
+      rgb(5 5 5 / 0) 30%,
+      rgb(5 5 5 / 0.2) 62%,
+      rgb(5 5 5 / 0.75) 88%,
       #050505 100%
     );
 }
