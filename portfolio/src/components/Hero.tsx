@@ -35,41 +35,36 @@ export function Hero() {
       {/* Atmosphere behind everything */}
       <div className="hero-smoke pointer-events-none absolute inset-0 z-0" aria-hidden />
 
-      {/* Layer 1 — PORTFOLIO, softly punched behind the subject */}
+      {/* Layer 1 — PORTFOLIO behind the subject */}
       <motion.div
-        className="portfolio-watermark-wrap pointer-events-none absolute inset-x-[-2vw] top-[2%] z-[1] flex select-none justify-center md:top-[0%]"
+        className="portfolio-watermark-wrap pointer-events-none absolute inset-x-[-2vw] top-[4%] z-[1] flex select-none justify-center md:top-[2%]"
         style={reduce ? undefined : { y: watermarkY }}
         aria-hidden
       >
         <p className="portfolio-watermark">PORTFOLIO</p>
       </motion.div>
 
-      {/* Layer 2 — subject with multi-axis fade into the stage */}
+      {/* Layer 2 — full atmospheric portrait (keeps the photo's natural smoke blend) */}
       <motion.div
-        className="pointer-events-none absolute left-1/2 top-[14%] z-[4] w-[min(86vw,480px)] -translate-x-1/2 md:top-[10%] md:w-[min(40vw,460px)] lg:top-[8%]"
+        className="pointer-events-none absolute left-1/2 top-[8%] z-[4] w-[min(96vw,820px)] -translate-x-1/2 md:top-[4%] md:w-[min(72vw,860px)] lg:w-[min(64vw,900px)]"
         style={reduce ? undefined : { y: portraitY, scale: portraitScale }}
-        initial={reduce ? false : { opacity: 0, y: 24 }}
+        initial={reduce ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
       >
-        <div className="hero-portrait-shell relative mx-auto aspect-[3/4] w-full">
+        <div className="hero-portrait-shell relative mx-auto aspect-[16/9] w-full md:aspect-[16/10]">
           <div className="hero-portrait-glow" aria-hidden />
-          <div className="hero-portrait-mask relative h-full w-full">
-            <Image
-              src="/images/portrait.png"
-              alt={`${site.name} portrait`}
-              fill
-              priority
-              sizes="(max-width: 768px) 86vw, 460px"
-              className="hero-portrait-img object-cover object-[center_10%]"
-            />
-          </div>
-          {/* Extra edge dissolves — bottom + sides into black */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/portrait.png"
+            alt={`${site.name} portrait`}
+            className="hero-portrait-img relative z-[1] h-full w-full object-contain object-center"
+          />
           <div className="hero-portrait-fade" aria-hidden />
         </div>
       </motion.div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-40 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/90 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-44 bg-gradient-to-t from-[var(--bg)] from-15% via-[var(--bg)]/85 to-transparent" />
 
       {/* Top meta row */}
       <div className="relative z-20 mx-auto flex max-w-7xl items-start justify-between gap-4 text-[0.68rem] font-medium uppercase tracking-[0.18em] md:text-xs">
