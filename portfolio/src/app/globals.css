@@ -68,38 +68,84 @@ body {
 
 .hero-stage {
   background:
-    radial-gradient(ellipse 55% 45% at 50% 35%, rgba(225, 29, 46, 0.16), transparent 65%),
-    radial-gradient(ellipse 40% 30% at 15% 80%, rgba(225, 29, 46, 0.08), transparent 55%),
+    radial-gradient(ellipse 50% 42% at 50% 32%, rgba(225, 29, 46, 0.2), transparent 62%),
+    radial-gradient(ellipse 35% 28% at 18% 78%, rgba(225, 29, 46, 0.07), transparent 55%),
     #050505;
 }
 
-.hero-portrait-glow {
-  background: radial-gradient(ellipse at 50% 40%, rgba(225, 29, 46, 0.4), transparent 68%);
-  filter: blur(36px);
-  z-index: -1;
-  transform: scale(1.15);
+.hero-smoke {
+  background:
+    radial-gradient(ellipse 42% 50% at 50% 40%, rgba(225, 29, 46, 0.18), transparent 70%),
+    radial-gradient(ellipse 28% 35% at 38% 48%, rgba(127, 29, 29, 0.16), transparent 65%),
+    radial-gradient(ellipse 28% 35% at 62% 48%, rgba(127, 29, 29, 0.16), transparent 65%);
+  filter: blur(8px);
 }
 
-/* Soft cutout so PORTFOLIO letters remain readable on both sides + above the head */
+.hero-portrait-glow {
+  position: absolute;
+  inset: 8% 4% 18%;
+  background: radial-gradient(
+    ellipse at 50% 35%,
+    rgba(225, 29, 46, 0.55),
+    rgba(225, 29, 46, 0.18) 45%,
+    transparent 72%
+  );
+  filter: blur(42px);
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Composite mask: keep face/shoulders, dissolve box edges + bottom */
 .hero-portrait-mask {
-  -webkit-mask-image: radial-gradient(
-    ellipse 62% 72% at 50% 38%,
-    #000 0%,
-    #000 42%,
-    rgba(0, 0, 0, 0.75) 58%,
-    transparent 78%
-  );
-  mask-image: radial-gradient(
-    ellipse 62% 72% at 50% 38%,
-    #000 0%,
-    #000 42%,
-    rgba(0, 0, 0, 0.75) 58%,
-    transparent 78%
-  );
+  position: relative;
+  z-index: 1;
+  -webkit-mask-image:
+    linear-gradient(to bottom, #000 0%, #000 52%, rgba(0, 0, 0, 0.55) 72%, transparent 92%),
+    radial-gradient(ellipse 78% 85% at 50% 36%, #000 0%, #000 48%, rgba(0, 0, 0, 0.7) 66%, transparent 82%);
+  mask-image:
+    linear-gradient(to bottom, #000 0%, #000 52%, rgba(0, 0, 0, 0.55) 72%, transparent 92%),
+    radial-gradient(ellipse 78% 85% at 50% 36%, #000 0%, #000 48%, rgba(0, 0, 0, 0.7) 66%, transparent 82%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
   -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
+}
+
+.hero-portrait-img {
+  /* Pull black photo field into the stage so red smoke/letters can show */
+  mix-blend-mode: lighten;
+  filter: contrast(1.05) saturate(1.08);
+}
+
+.hero-portrait-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, transparent 0%, transparent 48%, rgba(5, 5, 5, 0.35) 68%, rgba(5, 5, 5, 0.88) 86%, #050505 100%),
+    linear-gradient(to right, #050505 0%, transparent 18%, transparent 82%, #050505 100%),
+    radial-gradient(ellipse 70% 60% at 50% 30%, transparent 40%, rgba(5, 5, 5, 0.35) 78%, rgba(5, 5, 5, 0.75) 100%);
+}
+
+/* Softly dim letters behind the head so the subject sits in the word */
+.portfolio-watermark-wrap {
+  -webkit-mask-image: radial-gradient(
+    ellipse 28% 55% at 50% 55%,
+    transparent 0%,
+    transparent 35%,
+    rgba(0, 0, 0, 0.45) 58%,
+    #000 78%
+  );
+  mask-image: radial-gradient(
+    ellipse 28% 55% at 50% 55%,
+    transparent 0%,
+    transparent 35%,
+    rgba(0, 0, 0, 0.45) 58%,
+    #000 78%
+  );
 }
 
 .portfolio-watermark {
@@ -113,7 +159,7 @@ body {
   text-align: center;
   font-size: clamp(5.5rem, 21vw, 17rem);
   color: #ef222f;
-  opacity: 1;
+  opacity: 0.95;
   user-select: none;
   pointer-events: none;
   text-shadow: 0 0 48px rgba(225, 29, 46, 0.35);
