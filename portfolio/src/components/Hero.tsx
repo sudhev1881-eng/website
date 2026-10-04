@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import {
   motion,
   useReducedMotion,
@@ -46,7 +45,7 @@ export function Hero() {
 
       {/* Layer 2 — full atmospheric portrait (keeps the photo's natural smoke blend) */}
       <motion.div
-        className="pointer-events-none absolute left-1/2 top-[8%] z-[4] w-[min(96vw,820px)] -translate-x-1/2 md:top-[4%] md:w-[min(72vw,860px)] lg:w-[min(64vw,900px)]"
+        className="pointer-events-none absolute left-1/2 top-[8%] z-[4] w-[min(92vw,720px)] -translate-x-1/2 md:top-[5%] md:w-[min(58vw,740px)] lg:w-[min(52vw,760px)]"
         style={reduce ? undefined : { y: portraitY, scale: portraitScale }}
         initial={reduce ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
