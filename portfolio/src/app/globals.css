@@ -73,34 +73,50 @@ body {
     #050505;
 }
 
-.hero-portrait-glow::before {
-  content: "";
-  position: absolute;
-  inset: 12% 8% 8%;
-  background: radial-gradient(ellipse at center, rgba(225, 29, 46, 0.32), transparent 70%);
-  filter: blur(34px);
+.hero-portrait-glow {
+  background: radial-gradient(ellipse at 50% 40%, rgba(225, 29, 46, 0.4), transparent 68%);
+  filter: blur(36px);
   z-index: -1;
+  transform: scale(1.15);
 }
 
-.hero-portrait-img {
-  /* Drop the photo's black field so PORTFOLIO stays visible behind/around the subject */
-  mix-blend-mode: lighten;
+/* Soft cutout so PORTFOLIO letters remain readable on both sides + above the head */
+.hero-portrait-mask {
+  -webkit-mask-image: radial-gradient(
+    ellipse 62% 72% at 50% 38%,
+    #000 0%,
+    #000 42%,
+    rgba(0, 0, 0, 0.75) 58%,
+    transparent 78%
+  );
+  mask-image: radial-gradient(
+    ellipse 62% 72% at 50% 38%,
+    #000 0%,
+    #000 42%,
+    rgba(0, 0, 0, 0.75) 58%,
+    transparent 78%
+  );
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
 .portfolio-watermark {
   font-family: var(--font-display), sans-serif;
   font-weight: 800;
-  letter-spacing: -0.06em;
-  line-height: 0.78;
+  letter-spacing: -0.055em;
+  line-height: 0.76;
   white-space: nowrap;
-  width: 100%;
+  width: 104%;
+  max-width: none;
   text-align: center;
-  font-size: clamp(4.5rem, 18.5vw, 15rem);
-  color: #e11d2e;
+  font-size: clamp(5.5rem, 21vw, 17rem);
+  color: #ef222f;
   opacity: 1;
   user-select: none;
   pointer-events: none;
-  text-shadow: 0 0 40px rgba(225, 29, 46, 0.25);
+  text-shadow: 0 0 48px rgba(225, 29, 46, 0.35);
 }
 
 .skill-pill {

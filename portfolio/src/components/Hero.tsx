@@ -32,37 +32,37 @@ export function Hero() {
 
   return (
     <section className="hero-stage relative min-h-[100svh] overflow-hidden px-5 pb-12 pt-6 md:px-10 lg:px-14">
-      {/* Layer 1 — PORTFOLIO watermark (must stay readable behind portrait) */}
+      {/* Layer 1 — full-width PORTFOLIO behind the subject */}
       <motion.div
-        className="pointer-events-none absolute inset-x-0 top-[6%] z-[1] flex select-none justify-center overflow-visible md:top-[3%]"
+        className="pointer-events-none absolute inset-x-[-2vw] top-[2%] z-[1] flex select-none justify-center md:top-[0%]"
         style={reduce ? undefined : { y: watermarkY }}
         aria-hidden
       >
         <p className="portfolio-watermark">PORTFOLIO</p>
       </motion.div>
 
-      {/* Layer 2 — portrait; black bg blends away so PORTFOLIO shows through */}
+      {/* Layer 2 — masked subject so letters stay visible around him */}
       <motion.div
-        className="pointer-events-none absolute left-1/2 top-[8%] z-[4] w-[min(88vw,560px)] -translate-x-1/2 md:top-[4%] md:w-[min(46vw,560px)] lg:w-[min(42vw,540px)]"
+        className="pointer-events-none absolute left-1/2 top-[18%] z-[4] w-[min(78vw,420px)] -translate-x-1/2 md:top-[14%] md:w-[min(34vw,400px)] lg:top-[12%]"
         style={reduce ? undefined : { y: portraitY, scale: portraitScale }}
         initial={reduce ? false : { opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1, ease: [0.22, 1, 0.36, 1], delay: 0.15 }}
       >
-        <div className="hero-portrait-glow relative mx-auto aspect-[4/5] w-full max-w-[540px]">
+        <div className="hero-portrait-mask relative mx-auto aspect-[3/4] w-full">
+          <div className="hero-portrait-glow absolute inset-0" />
           <Image
             src="/images/portrait.png"
             alt={`${site.name} portrait`}
             fill
             priority
-            sizes="(max-width: 768px) 88vw, 540px"
-            className="hero-portrait-img object-cover object-[center_18%]"
+            sizes="(max-width: 768px) 78vw, 400px"
+            className="object-cover object-[center_12%]"
           />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/55 to-transparent" />
         </div>
       </motion.div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-28 bg-gradient-to-t from-[var(--bg)] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[6] h-32 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)]/80 to-transparent" />
 
       {/* Top meta row */}
       <div className="relative z-20 mx-auto flex max-w-7xl items-start justify-between gap-4 text-[0.68rem] font-medium uppercase tracking-[0.18em] md:text-xs">
