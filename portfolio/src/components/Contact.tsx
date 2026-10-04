@@ -1,11 +1,47 @@
 "use client";
 
 import Image from "next/image";
+import { motion, useReducedMotion } from "framer-motion";
 import { Code2, Link2, Mail, MapPin, Globe } from "lucide-react";
 import { site } from "@/data/site";
-import { Reveal } from "./Motion";
+import { Reveal, Stagger, StaggerItem } from "./Motion";
+
+const contactItems = [
+  {
+    label: site.contact.email,
+    href: `mailto:${site.contact.email}`,
+    icon: Mail,
+    external: false,
+  },
+  {
+    label: "GitHub",
+    href: site.contact.github,
+    icon: Code2,
+    external: true,
+  },
+  {
+    label: "LinkedIn",
+    href: site.contact.linkedin,
+    icon: Link2,
+    external: true,
+  },
+  {
+    label: site.contact.location,
+    href: null,
+    icon: MapPin,
+    external: false,
+  },
+  {
+    label: site.contact.website,
+    href: null,
+    icon: Globe,
+    external: false,
+  },
+] as const;
 
 export function Contact() {
+  const reduce = useReducedMotion();
+
   return (
     <section
       id="contact"
@@ -23,83 +59,88 @@ export function Contact() {
             across AI, cybersecurity, and the web.
           </p>
           <div className="mt-8">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--red)] bg-[var(--red)] px-5 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white">
+            <motion.span
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--red)] bg-[var(--red)] px-5 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white"
+              animate={
+                reduce
+                  ? undefined
+                  : {
+                      boxShadow: [
+                        "0 0 0 0 rgba(225,29,46,0.35)",
+                        "0 0 0 12px rgba(225,29,46,0)",
+                      ],
+                    }
+              }
+              transition={
+                reduce
+                  ? undefined
+                  : { duration: 2.2, repeat: Infinity, ease: "easeOut" }
+              }
+            >
               <span className="h-1.5 w-1.5 rotate-45 bg-white" />
               {site.available}
-            </span>
+            </motion.span>
           </div>
         </Reveal>
 
-        <Reveal delay={0.1}>
-          <ul className="space-y-5">
-            <li>
-              <a
-                href={`mailto:${site.contact.email}`}
-                className="group flex items-center gap-4 text-sm text-white/85 transition hover:text-white"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 group-hover:border-[var(--red)]">
-                  <Mail className="h-4 w-4 text-[var(--red)]" />
-                </span>
-                {site.contact.email}
-              </a>
-            </li>
-            <li>
-              <a
-                href={site.contact.github}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-4 text-sm text-white/85 transition hover:text-white"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 group-hover:border-[var(--red)]">
-                  <Code2 className="h-4 w-4 text-[var(--red)]" />
-                </span>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a
-                href={site.contact.linkedin}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-4 text-sm text-white/85 transition hover:text-white"
-              >
-                <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 group-hover:border-[var(--red)]">
-                  <Link2 className="h-4 w-4 text-[var(--red)]" />
-                </span>
-                LinkedIn
-              </a>
-            </li>
-            <li className="flex items-center gap-4 text-sm text-white/85">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15">
-                <MapPin className="h-4 w-4 text-[var(--red)]" />
-              </span>
-              {site.contact.location}
-            </li>
-            <li className="flex items-center gap-4 text-sm text-white/85">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15">
-                <Globe className="h-4 w-4 text-[var(--red)]" />
-              </span>
-              {site.contact.website}
-            </li>
-          </ul>
+        <Reveal delay={0.08}>
+          <Stagger className="space-y-5" delay={0.05}>
+            {contactItems.map((item) => {
+              const Icon = item.icon;
+              const inner = (
+                <>
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 transition group-hover:border-[var(--red)] group-hover:bg-[var(--red)]/10">
+                    <Icon className="h-4 w-4 text-[var(--red)]" />
+                  </span>
+                  {item.label}
+                </>
+              );
+
+              return (
+                <StaggerItem key={item.label}>
+                  {item.href ? (
+                    <motion.a
+                      href={item.href}
+                      target={item.external ? "_blank" : undefined}
+                      rel={item.external ? "noreferrer" : undefined}
+                      className="group flex items-center gap-4 text-sm text-white/85 transition hover:text-white"
+                      whileHover={reduce ? undefined : { x: 6 }}
+                    >
+                      {inner}
+                    </motion.a>
+                  ) : (
+                    <div className="group flex items-center gap-4 text-sm text-white/85">
+                      {inner}
+                    </div>
+                  )}
+                </StaggerItem>
+              );
+            })}
+          </Stagger>
         </Reveal>
 
-        <Reveal delay={0.18}>
-          <div className="relative aspect-[9/7] overflow-hidden border border-white/10 bg-[#111]">
+        <Reveal delay={0.14}>
+          <motion.div
+            className="relative aspect-[9/7] overflow-hidden border border-white/10 bg-[#111]"
+            whileHover={reduce ? undefined : { scale: 1.015 }}
+            transition={{ duration: 0.4 }}
+          >
             <Image
               src="/images/workspace.svg"
               alt="Developer workspace"
               fill
               unoptimized
-              className="object-cover"
+              className="object-cover transition duration-700 hover:scale-105"
               sizes="(max-width: 1024px) 100vw, 33vw"
             />
-          </div>
+          </motion.div>
         </Reveal>
       </div>
 
       <div className="mx-auto mt-16 flex max-w-7xl flex-col gap-3 border-t border-white/8 pt-8 text-xs uppercase tracking-[0.14em] text-white/45 sm:flex-row sm:items-center sm:justify-between">
-        <p>© {new Date().getFullYear()} {site.name}</p>
+        <p>
+          © {new Date().getFullYear()} {site.name}
+        </p>
         <p>Built with Next.js</p>
       </div>
     </section>

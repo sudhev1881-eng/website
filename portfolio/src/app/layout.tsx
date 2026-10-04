@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Bebas_Neue, DM_Sans, Great_Vibes } from "next/font/google";
+import { SmoothScroll } from "@/components/SmoothScroll";
+import { ScrollProgress } from "@/components/Motion";
 import "./globals.css";
 
 const display = Bebas_Neue({
@@ -38,7 +40,12 @@ export default function RootLayout({
       lang="en"
       className={`${display.variable} ${body.variable} ${script.variable} h-full`}
     >
-      <body className="min-h-full flex flex-col antialiased">{children}</body>
+      <body className="min-h-full flex flex-col antialiased">
+        <SmoothScroll>
+          <ScrollProgress />
+          {children}
+        </SmoothScroll>
+      </body>
     </html>
   );
 }
